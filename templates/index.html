@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload de PDFs</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Upload de PDFs para Análise</h1>
+
+  <form action="/upload" method="POST" enctype="multipart/form-data" id="formulario">
+    <div id="pdf-container">
+      <div class="pdf-bloco">
+        <input type="file" name="pdfs" required>
+        <select name="tipos[]" required>
+          {% for tipo in tipos %}
+          <option value="{{ tipo }}">{{ tipo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <button type="button" onclick="adicionarBloco()">+ Adicionar mais PDFs</button><br><br>
+    <button type="submit">Enviar para Análise</button>
+  </form>
+
+  <script>
+    function adicionarBloco() {
+      const container = document.getElementById('pdf-container');
+      const bloco = document.createElement('div');
+      bloco.classList.add('pdf-bloco');
+      bloco.innerHTML = container.children[0].innerHTML;
+      container.appendChild(bloco);
+    }
+  </script>
+</body>
+</html>

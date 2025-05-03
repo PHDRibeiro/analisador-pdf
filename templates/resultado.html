@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Resultados</title>
+</head>
+<body>
+  <h1>Resultado da Análise</h1>
+  {% for item in resultados %}
+    <h3>{{ item.arquivo }} ({{ item.tipo }})</h3>
+    <pre>{{ item.texto_resumido }}</pre>
+    <hr>
+  {% endfor %}
+  <a href="/">← Voltar</a>
+</body>
+</html>
