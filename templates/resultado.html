@@ -2,15 +2,45 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Resultados</title>
+  <title>Resultado da Análise</title>
+  <style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #999;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #eee;
+    }
+  </style>
 </head>
 <body>
   <h1>Resultado da Análise</h1>
-  {% for item in resultados %}
-    <h3>{{ item.arquivo }} ({{ item.tipo }})</h3>
-    <pre>{{ item.texto_resumido }}</pre>
-    <hr>
-  {% endfor %}
+
+  <table>
+    <thead>
+      <tr>
+        {% for col in resultados[0].keys() %}
+        <th>{{ col }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in resultados %}
+      <tr>
+        {% for col in row.values() %}
+        <td>{{ col }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
   <a href="/">← Voltar</a>
 </body>
 </html>

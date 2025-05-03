@@ -3,6 +3,7 @@ import os
 from werkzeug.utils import secure_filename
 import pdfplumber
 from pypdf import PdfReader, PdfWriter
+import pandas as pd  # ✅ NOVO
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -28,10 +29,32 @@ def extrair_texto(caminho_pdf):
             texto += pagina.extract_text() + "\n"
     return texto
 
+def parse_inicial(texto):
+    import re
+
+    resultados = []
+
+    # Pré-processamento: junta quebras de linha em nomes (mantém parágrafos)
+    texto = texto.replace('\n', ' ')
+
+    # Padrão robusto para encontrar pares Nome + CPF
+    padrao = r'([A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{5,}(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]+){1,5}),\s*RG\s*n[ºo]?\s*\d{1,3}[.\dXx-]*.*?CPF\s*n[ºo]?\s*(\d{3}\.\d{3}\.\d{3}-\d{2})'
+
+    matches = re.findall(padrao, texto)
+
+    for nome, cpf in matches:
+        resultados.append({
+            "nome": nome.strip(),
+            "cpf": cpf.strip()
+        })
+
+    return resultados
+
 def processar_arquivos():
     pasta = 'uploads'
     arquivos = os.listdir(pasta)
-    resultados = []
+
+    dados_inicial = []
 
     for arquivo in arquivos:
         caminho = os.path.join(pasta, arquivo)
@@ -50,17 +73,27 @@ def processar_arquivos():
 
         texto = extrair_texto(caminho_para_processar)
 
-        resultado = {
-            "arquivo": nome_original,
-            "tipo": tipo,
-            "texto_resumido": texto[:200] + '...'
-        }
-        resultados.append(resultado)
+        if tipo == 'Inicial':
+            dados_inicial.extend(parse_inicial(texto))
 
         if caminho_para_processar != caminho:
             os.remove(caminho_para_processar)
 
-    return resultados
+    # Cria DataFrame base
+    df = pd.DataFrame(dados_inicial)
+
+    # Adiciona numeração
+    df.insert(0, 'ID', range(1, len(df) + 1))
+
+    # Adiciona colunas dos informativos com valores padrão
+    for inf in ['Extratão', 'CAF', 'SPPREV']:
+        df[f'Informativo {inf}'] = 'Não'
+        df[f'Página {inf}'] = ''
+
+    # Deixar colunas com letras maiúsculas no início
+    df.columns = [col.capitalize() for col in df.columns]
+
+    return df.to_dict(orient='records')
 
 # --- Rotas ---
 
