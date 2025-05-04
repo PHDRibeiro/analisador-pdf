@@ -8,21 +8,19 @@
 <body>
   <h1>Upload de PDFs para Análise</h1>
 
-  <form action="/upload" method="POST" enctype="multipart/form-data" id="formulario">
-    <div id="pdf-container">
-      <div class="pdf-bloco">
-        <input type="file" name="pdfs" required>
-        <select name="tipos[]" required>
-          {% for tipo in tipos %}
-          <option value="{{ tipo }}">{{ tipo }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-
-    <button type="button" onclick="adicionarBloco()">+ Adicionar mais PDFs</button><br><br>
+  <form action="/upload" method="POST" enctype="multipart/form-data">
+    <label>Selecionar arquivos (vários de uma vez):</label><br>
+    <input type="file" name="pdfs" multiple required><br><br>
+  
+    <label>Tipo de documento:</label><br>
+    <select name="tipo" required>
+      {% for tipo in tipos %}
+      <option value="{{ tipo }}">{{ tipo }}</option>
+      {% endfor %}
+    </select><br><br>
+  
     <button type="submit">Enviar para Análise</button>
-  </form>
+  </form> 
 
   <script>
     function adicionarBloco() {

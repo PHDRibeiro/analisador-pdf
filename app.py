@@ -3,7 +3,7 @@ import os
 from werkzeug.utils import secure_filename
 import pdfplumber
 from pypdf import PdfReader, PdfWriter
-import pandas as pd  # ✅ NOVO
+import pandas as pd
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
@@ -50,11 +50,42 @@ def parse_inicial(texto):
 
     return resultados
 
+def parse_extratao(texto):
+    import re
+
+    resultado = {
+        "nome": "NOME NÃO ENCONTRADO",
+        "cpf": "CPF NÃO ENCONTRADO"
+    }
+
+    # Remove quebras de linha internas
+    texto = texto.replace('\n', ' ')
+
+    # Padrão para encontrar CPF
+    match_cpf = re.search(r'\b(\d{3}\.\d{3}\.\d{3}-\d{2})\b', texto)
+    if match_cpf:
+        resultado["cpf"] = match_cpf.group(1)
+
+    # Padrão para nome: depois da palavra "NOME" e antes de números
+    match_nome = re.search(r'NOME\s+([A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{3,})\s+\d{11}', texto)
+    if match_nome:
+        resultado["nome"] = match_nome.group(1).strip()
+
+    return [resultado]
+
+def extrair_paginas_arquivo(nome_arquivo):
+    import re
+    match = re.search(r'pag[_ ]?(\d{2,5})\D+(\d{2,5})', nome_arquivo)
+    if match:
+        return f"{match.group(1)}–{match.group(2)}"
+    return ""
+
 def processar_arquivos():
     pasta = 'uploads'
     arquivos = os.listdir(pasta)
 
     dados_inicial = []
+    extratao_encontrados = []
 
     for arquivo in arquivos:
         caminho = os.path.join(pasta, arquivo)
@@ -75,11 +106,17 @@ def processar_arquivos():
 
         if tipo == 'Inicial':
             dados_inicial.extend(parse_inicial(texto))
+        elif tipo == 'Informativo Extratão':
+            extratos = parse_extratao(texto)
+            for dado in extratos:
+                dado["arquivo"] = nome_original
+                dado["paginas"] = extrair_paginas_arquivo(nome_original)
+                extratao_encontrados.append(dado)
 
         if caminho_para_processar != caminho:
             os.remove(caminho_para_processar)
 
-    # Cria DataFrame base
+    # Cria DataFrame base com dados da Inicial
     df = pd.DataFrame(dados_inicial)
 
     # Adiciona numeração
@@ -90,7 +127,21 @@ def processar_arquivos():
         df[f'Informativo {inf}'] = 'Não'
         df[f'Página {inf}'] = ''
 
-    # Deixar colunas com letras maiúsculas no início
+    # Cruzamento com dados do Extratão por CPF (normalizado)
+    for idx, row in df.iterrows():
+        cpf_df = str(row['cpf']).replace('.', '').replace('-', '').strip()
+        for registro in extratao_encontrados:
+            cpf_extra = str(registro['cpf']).replace('.', '').replace('-', '').strip()
+
+            # Aqui está o print de comparação
+            print(f"Comparando: {cpf_df} vs {cpf_extra}")
+
+            if cpf_df == cpf_extra:
+                df.at[idx, 'Informativo Extratão'] = 'Sim'
+                df.at[idx, 'Página Extratão'] = registro.get('paginas', '')
+                break
+
+    # Padroniza capitalização das colunas
     df.columns = [col.capitalize() for col in df.columns]
 
     return df.to_dict(orient='records')
@@ -104,15 +155,15 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload():
     arquivos = request.files.getlist('pdfs')
-    tipos = request.form.getlist('tipos[]')
+    tipo = request.form.get('tipo')
 
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    for idx, arquivo in enumerate(arquivos):
-        if arquivo and tipos[idx]:
-            tipo = tipos[idx].replace(" ", "_")
+    for arquivo in arquivos:
+        if arquivo and tipo:
+            tipo_limpo = tipo.replace(" ", "_")
             nome_seguro = secure_filename(arquivo.filename)
-            nome_final = f"{tipo}__{nome_seguro}"
+            nome_final = f"{tipo_limpo}__{nome_seguro}"
             caminho = os.path.join(app.config['UPLOAD_FOLDER'], nome_final)
             arquivo.save(caminho)
 
