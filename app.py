@@ -37,12 +37,31 @@ def extrair_texto(caminho_pdf):
 
 def parse_inicial(texto):
     import re
+
     resultados = []
-    texto = texto.replace('\n', ' ')
-    padrao = r'([A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{5,}(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ]+){1,5}),\s*RG\s*n[\u00bao]?\s*(\d{1,3}[.\dXx-]*)\s*e\s*CPF\s*n[\u00bao]?\s*(\d{3}\.\d{3}\.\d{3}-\d{2})'
-    matches = re.findall(padrao, texto)
+
+    texto = texto.replace('\n', ' ').replace('\r', ' ')
+    
+    # Captura nomes seguidos de "RG n" e "CPF n"
+    padrao = re.compile(
+        r'([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ\s]{5,})[,;\s]+RG\s*n[ºo]?\s*(\d{1,3}[.\dXx-]*)[,;\s]+.*?CPF\s*n[ºo]?\s*(\d{3}\.\d{3}\.\d{3}-\d{2})',
+        re.IGNORECASE
+    )
+
+    matches = padrao.findall(texto)
+
     for nome, rg, cpf in matches:
-        resultados.append({"nome": nome.strip(), "rg": rg.strip(), "cpf": cpf.strip()})
+        nome = nome.strip().upper()
+        rg = rg.strip()
+        cpf = cpf.strip()
+        print(f"[DEBUG] Nome capturado: {nome} | RG: {rg} | CPF: {cpf}")
+        resultados.append({
+            "nome": nome,
+            "rg": rg,
+            "cpf": cpf
+        })
+
+    print(f"[DEBUG] Total de autores encontrados: {len(resultados)}")
     return resultados
 
 def parse_extratao(texto):
@@ -111,6 +130,7 @@ def processar_arquivos():
         texto = extrair_texto(caminho_para_processar)
 
         if tipo == 'Inicial':
+            print(f"\n[DEBUG] Texto da Inicial ({nome_original}):\n{texto}\n")  # ← AQUI
             dados_inicial.extend(parse_inicial(texto))
         elif tipo == 'Informativo Extratão':
             extratos = parse_extratao(texto)
