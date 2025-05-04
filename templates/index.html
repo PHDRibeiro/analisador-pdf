@@ -2,56 +2,174 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Upload de PDFs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Análise de Processos</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <h1>Importar documentos</h1>
+  <div class="container">
+    <header>
+      <h1><i class="fas fa-balance-scale"></i> Sistema de Análise de Processos</h1>
+      <p class="subtitle">Importação e análise de documentos judiciais</p>
+    </header>
 
-  <form action="/upload" method="POST" enctype="multipart/form-data">
-    <label for="pdfs">Selecionar arquivos (vários de uma vez):</label>
-    <input type="file" name="pdfs" multiple required>
+    <div class="card">
+      <h2><i class="fas fa-file-upload"></i> Importar documentos</h2>
+      
+      <form action="/upload" method="POST" enctype="multipart/form-data" id="upload-form">
+        <div class="form-group">
+          <label for="tipo">1. Selecione o tipo de documento:</label>
+          <select name="tipo" id="tipo" required>
+            {% for tipo in tipos %}
+            <option value="{{ tipo }}">{{ tipo }}</option>
+            {% endfor %}
+          </select>
+        </div>
 
-    <label for="tipo">Tipo de documento:</label>
-    <select name="tipo" required>
-      {% for tipo in tipos %}
-      <option value="{{ tipo }}">{{ tipo }}</option>
-      {% endfor %}
-    </select>
+        <div class="form-group drop-area" id="drop-area">
+          <input type="file" name="pdfs" id="file-input" multiple required hidden>
+          <label for="file-input" class="file-label">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <span>2. Arraste arquivos aqui ou clique para selecionar</span>
+            <span class="file-info" id="file-info">Nenhum arquivo selecionado</span>
+          </label>
+        </div>
 
-    <button type="submit">📥 Enviar Arquivos</button>
-  </form>
+        <button type="submit" class="btn primary"><i class="fas fa-upload"></i> Enviar Arquivos</button>
+      </form>
+    </div>
 
-  {% if pode_analisar %}
-  <div style="max-width: 500px; margin-top: 20px;">
-    <form action="/analisar" method="GET">
-      <button type="submit" class="analisar">📊 Analisar</button>
-    </form>
+    {% if pode_analisar %}
+    <div class="card">
+      <h2><i class="fas fa-chart-bar"></i> Analisar documentos</h2>
+      <p>Você já carregou os arquivos necessários para iniciar a análise.</p>
+      <form action="/analisar" method="GET">
+        <button type="submit" class="btn success"><i class="fas fa-search"></i> Iniciar Análise</button>
+      </form>
+    </div>
+    {% endif %}
+    
+    <div class="card">
+      <h2><i class="fas fa-folder-open"></i> Arquivos Enviados</h2>
+      
+      <div class="file-stats">
+        {% set arquivos_filtrados = [] %}
+        {% for arquivo in arquivos %}
+          {% if not arquivo.startswith('_recorte_') %}
+            {% set _ = arquivos_filtrados.append(arquivo) %}
+          {% endif %}
+        {% endfor %}
+        
+        {% set total_files = arquivos_filtrados|length %}
+        {% set tipos_docs = {} %}
+        {% for arquivo in arquivos_filtrados %}
+          {% if '__' in arquivo %}
+            {% set tipo = arquivo.split('__', 1)[0].replace('_', ' ') %}
+            {% if tipo in tipos_docs %}
+              {% set _ = tipos_docs.update({tipo: tipos_docs[tipo] + 1}) %}
+            {% else %}
+              {% set _ = tipos_docs.update({tipo: 1}) %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        
+        <div class="stat-card">
+          <div class="stat-number">{{ total_files }}</div>
+          <div class="stat-label">Total de arquivos</div>
+        </div>
+        
+        {% for tipo, contagem in tipos_docs.items() %}
+        <div class="stat-card">
+          <div class="stat-number">{{ contagem }}</div>
+          <div class="stat-label">{{ tipo }}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="file-list">
+        {% for arquivo in arquivos %}
+          {% if '__' in arquivo and not arquivo.startswith('_recorte_') %}
+            {% set tipo, nome = arquivo.split('__', 1) %}
+            <div class="file-item">
+              <div class="file-icon">
+                <i class="fas fa-file-pdf"></i>
+              </div>
+              <div class="file-info">
+                <div class="file-name">{{ nome }}</div>
+                <div class="file-type">{{ tipo.replace('_', ' ') }}</div>
+              </div>
+            </div>
+          {% endif %}
+        {% else %}
+          <div class="empty-state">
+            <i class="fas fa-folder-open"></i>
+            <p>Nenhum arquivo enviado ainda</p>
+          </div>
+        {% endfor %}
+      </div>
+
+      <form action="/limpar_uploads" method="POST" onsubmit="return confirm('Tem certeza que deseja apagar todos os arquivos?');" class="mt-4">
+        <button class="btn danger" type="submit"><i class="fas fa-trash-alt"></i> Limpar Pasta Uploads</button>
+      </form>
+    </div>
   </div>
-  {% endif %}
-  
-  <hr>
 
-  <h2>Arquivos Enviados</h2>
-  <ul>
-    {% for arquivo in arquivos %}
-      <li>{{ arquivo }}</li>
-    {% else %}
-      <li><i>Nenhum arquivo enviado ainda.</i></li>
-    {% endfor %}
-  </ul>
-
-  <form action="/limpar_uploads" method="POST" onsubmit="return confirm('Tem certeza que deseja apagar todos os arquivos da pasta uploads?');">
-    <button class="danger" type="submit">🗑️ Limpar Pasta Uploads</button>
-  </form>
+  <footer>
+    <p>Sistema de Análise de Processos &copy; 2025</p>
+  </footer>
 
   <script>
-    function adicionarBloco() {
-      const container = document.getElementById('pdf-container');
-      const bloco = document.createElement('div');
-      bloco.classList.add('pdf-bloco');
-      bloco.innerHTML = container.children[0].innerHTML;
-      container.appendChild(bloco);
+    // Funcionalidade de arrastar e soltar arquivos
+    const dropArea = document.getElementById('drop-area');
+    const fileInput = document.getElementById('file-input');
+    const fileInfo = document.getElementById('file-info');
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropArea.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropArea.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropArea.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight() {
+      dropArea.classList.add('highlight');
+    }
+
+    function unhighlight() {
+      dropArea.classList.remove('highlight');
+    }
+
+    dropArea.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      fileInput.files = files;
+      updateFileInfo();
+    }
+
+    fileInput.addEventListener('change', updateFileInfo);
+
+    function updateFileInfo() {
+      const numFiles = fileInput.files.length;
+      if (numFiles === 0) {
+        fileInfo.textContent = 'Nenhum arquivo selecionado';
+      } else {
+        fileInfo.textContent = numFiles === 1 
+          ? '1 arquivo selecionado' 
+          : `${numFiles} arquivos selecionados`;
+      }
     }
   </script>
 </body>

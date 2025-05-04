@@ -1,14 +1,39 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file
 import os
 from werkzeug.utils import secure_filename
 import pdfplumber
 from pypdf import PdfReader, PdfWriter
 import pandas as pd
 import unicodedata
+import re
+import json
+from datetime import datetime
+import openai
+from dotenv import load_dotenv
+
+print("==== TODAS AS VARIÁVEIS DE AMBIENTE ====")
+import os
+for k, v in os.environ.items():
+    if 'KEY' in k:
+        print(f"{k}: {v[:10]}...")  # Mostra apenas os primeiros 10 caracteres por segurança
+print("=======================================")
+
+# Caminho absoluto para o arquivo .env
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path)
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
+RESULTS_FOLDER = 'resultados'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['RESULTS_FOLDER'] = RESULTS_FOLDER
+
+# Configuração da API OpenAI
+openai.api_key = os.getenv('OPENAI_API_KEY')
+
+# Assegura que as pastas existam
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(RESULTS_FOLDER, exist_ok=True)
 
 # Tipos de documentos disponíveis
 TIPOS = ['Inicial', 'Informativo CAF', 'Informativo SPPREV', 'Informativo Extratão', 'Litispendência']
@@ -32,7 +57,9 @@ def extrair_texto(caminho_pdf):
     texto = ""
     with pdfplumber.open(caminho_pdf) as pdf:
         for pagina in pdf.pages:
-            texto += pagina.extract_text() + "\n"
+            texto_pagina = pagina.extract_text()
+            if texto_pagina:  # Verifica se o texto não é None
+                texto += texto_pagina + "\n"
     return texto
 
 def parse_inicial(texto):
@@ -98,11 +125,111 @@ def parse_caf(texto):
 
     return [resultado]
 
+def parse_spprev(texto):
+    import re
+    
+    resultado = {
+        "nome": "NOME NÃO ENCONTRADO",
+        "cpf": "CPF NÃO ENCONTRADO",
+        "rg": "RG NÃO ENCONTRADO",
+        "matricula": "MATRÍCULA NÃO ENCONTRADA",
+        "beneficio": "BENEFÍCIO NÃO ENCONTRADO"
+    }
+    
+    texto = texto.replace('\n', ' ')
+    
+    # Captura CPF
+    match_cpf = re.search(r'\b(\d{3}\.\d{3}\.\d{3}-\d{2})\b', texto)
+    if match_cpf:
+        resultado["cpf"] = match_cpf.group(1)
+    
+    # Captura nome
+    match_nome = re.search(r'Nome:\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ ]{3,}?)(?:\s*CPF|\s*RG|\s*Mat)', texto, re.IGNORECASE)
+    if match_nome:
+        resultado["nome"] = match_nome.group(1).strip()
+    
+    # Captura RG
+    match_rg = re.search(r'RG\s*[:\s]?\s*(\d[\d\.\-xX]+)', texto, re.IGNORECASE)
+    if match_rg:
+        resultado["rg"] = match_rg.group(1).strip()
+    
+    # Captura matrícula
+    match_matricula = re.search(r'Matrícula\s*[:\s]?\s*(\d+)', texto, re.IGNORECASE)
+    if match_matricula:
+        resultado["matricula"] = match_matricula.group(1).strip()
+    
+    # Captura tipo de benefício
+    match_beneficio = re.search(r'(?:Benefício|Beneficio)\s*[:\s]?\s*([A-Z0-9 ]+)', texto, re.IGNORECASE)
+    if match_beneficio:
+        resultado["beneficio"] = match_beneficio.group(1).strip()
+    
+    return [resultado]
+
 def extrair_paginas_arquivo(nome_arquivo):
     import re
-    match = re.search(r'pag[_ ]?(\d{2,5})\D+(\d{2,5})', nome_arquivo)
-    return f"{match.group(1)}–{match.group(2)}" if match else ""
+    
+    # Padrão 1: pag_123_456 ou pag 123 456
+    padrao1 = re.search(r'pag[_ ]?(\d{2,5})\D+(\d{2,5})', nome_arquivo)
+    if padrao1:
+        return f"{padrao1.group(1)}–{padrao1.group(2)}"
+    
+    # Padrão 2: (pag 620 - 751) ou similar
+    padrao2 = re.search(r'\(pag[s]?\s*(\d{2,5})\s*[-–]\s*(\d{2,5})\)', nome_arquivo)
+    if padrao2:
+        return f"{padrao2.group(1)}–{padrao2.group(2)}"
+    
+    # Padrão 3: páginas 123-456 ou similar
+    padrao3 = re.search(r'p[áa]gina[s]?\s*(\d{2,5})\s*[-–]\s*(\d{2,5})', nome_arquivo, re.IGNORECASE)
+    if padrao3:
+        return f"{padrao3.group(1)}–{padrao3.group(2)}"
+    
+    # Se nenhum padrão for encontrado
+    return ""
 
+def analisar_com_chatgpt(dados_autor):
+    """
+    Usa a API do OpenAI para analisar os dados do autor e fornecer insights
+    """
+    try:
+        prompt = f"""
+        Analise os seguintes dados de processo judicial:
+        
+        Nome do autor: {dados_autor.get('Nome', 'Não informado')}
+        CPF: {dados_autor.get('Cpf', 'Não informado')}
+        RG: {dados_autor.get('Rg', 'Não informado')}
+        
+        Documentos encontrados:
+        - Informativo CAF: {dados_autor.get('Informativo Caf', 'Não')}
+        - Informativo SPPREV: {dados_autor.get('Informativo Spprev', 'Não')}
+        - Informativo Extratão: {dados_autor.get('Informativo Extratão', 'Não')}
+        
+        Com base nessas informações, responda de forma objetiva (máximo 2 parágrafos):
+        1. Quais documentos estão faltando para este autor?
+        2. Quais são as recomendações para prosseguir com o processo?
+        """
+        
+        # Obtenha a chave da API diretamente do ambiente
+        api_key = os.getenv('OPENAI_API_KEY')
+        print(f"Chave da API (4 primeiros caracteres): {api_key[:15] if api_key else 'Nenhuma chave encontrada'}")
+        
+        # Inicialize o cliente com a chave explícita
+        client = openai.OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Você é um assistente especializado em processos judiciais, com foco em análise de documentação."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=250
+        )
+        
+        analise = response.choices[0].message.content.strip()
+        return analise
+    except Exception as e:
+        print(f"Erro ao usar a API OpenAI: {e}")
+        return "Não foi possível realizar a análise automatizada. Verifique sua chave de API."
+    
 def processar_arquivos():
     pasta = 'uploads'
     arquivos = os.listdir(pasta)
@@ -110,6 +237,7 @@ def processar_arquivos():
     dados_inicial = []
     extratao_encontrados = []
     caf_encontrados = []
+    spprev_encontrados = []
 
     for arquivo in arquivos:
         caminho = os.path.join(pasta, arquivo)
@@ -130,7 +258,7 @@ def processar_arquivos():
         texto = extrair_texto(caminho_para_processar)
 
         if tipo == 'Inicial':
-            print(f"\n[DEBUG] Texto da Inicial ({nome_original}):\n{texto}\n")  # ← AQUI
+            print(f"\n[DEBUG] Texto da Inicial ({nome_original}):\n{texto}\n")
             dados_inicial.extend(parse_inicial(texto))
         elif tipo == 'Informativo Extratão':
             extratos = parse_extratao(texto)
@@ -144,8 +272,17 @@ def processar_arquivos():
                 dado["arquivo"] = nome_original
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
                 caf_encontrados.append(dado)
+        elif tipo == 'Informativo SPPREV':
+            registros = parse_spprev(texto)
+            for dado in registros:
+                dado["arquivo"] = nome_original
+                dado["paginas"] = extrair_paginas_arquivo(nome_original)
+                spprev_encontrados.append(dado)
 
     # Cria DataFrame base com dados da Inicial
+    if not dados_inicial:
+        return []
+        
     df = pd.DataFrame(dados_inicial)
     df.insert(0, 'ID', range(1, len(df) + 1))
 
@@ -193,10 +330,65 @@ def processar_arquivos():
                     df.at[idx, 'Informativo CAF'] = 'Sim'
                     df.at[idx, 'Página CAF'] = registro.get('paginas', '')
                     break
+    
+    # Cruzamento com SPPREV (por CPF, RG ou nome)
+    for idx, row in df.iterrows():
+        cpf_df = str(row.get('cpf', '')).replace('.', '').replace('-', '').strip()
+        rg_df = str(row.get('rg', '')).replace('.', '').replace('-', '').upper().lstrip('0')
+        nome_df = normalizar_nome(row.get('nome', ''))
+        
+        encontrou = False
+        
+        # Primeiro tenta por CPF
+        for registro in spprev_encontrados:
+            cpf_spprev = str(registro.get('cpf', '')).replace('.', '').replace('-', '').strip()
+            if cpf_df and cpf_spprev and cpf_df == cpf_spprev:
+                df.at[idx, 'Informativo SPPREV'] = 'Sim'
+                df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
+                encontrou = True
+                break
+        
+        # Se não encontrou por CPF, tenta por RG
+        if not encontrou:
+            for registro in spprev_encontrados:
+                rg_spprev = str(registro.get('rg', '')).replace('.', '').replace('-', '').upper().lstrip('0')
+                if rg_df and rg_spprev and (
+                    rg_df[:6] == rg_spprev[:6] or
+                    rg_df[:7] == rg_spprev[:7] or
+                    rg_df[:8] == rg_spprev[:8]
+                ):
+                    df.at[idx, 'Informativo SPPREV'] = 'Sim'
+                    df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
+                    encontrou = True
+                    break
+        
+        # Se ainda não encontrou, tenta por nome
+        if not encontrou:
+            for registro in spprev_encontrados:
+                nome_spprev = normalizar_nome(registro.get('nome', ''))
+                if nome_df and nome_spprev and (nome_df in nome_spprev or nome_spprev in nome_df):
+                    df.at[idx, 'Informativo SPPREV'] = 'Sim'
+                    df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
+                    break
 
-
-    # Padroniza capitalização das colunas
-    df.columns = [col.capitalize() for col in df.columns]
+    # Define nomes de colunas padronizados, preservando os nomes específicos para os informativos
+    colunas_padronizadas = []
+    for col in df.columns:
+        if col.startswith('informativo') or col.startswith('página'):
+            # Mantém o formato original para colunas de informativos e páginas
+            colunas_padronizadas.append(col)
+        else:
+            # Capitaliza as demais colunas
+            colunas_padronizadas.append(col.capitalize())
+            
+    df.columns = colunas_padronizadas
+    
+    # Adiciona coluna de análise usando a API do OpenAI
+    if 'OPENAI_API_KEY' in os.environ and os.environ['OPENAI_API_KEY']:
+        df['Análise'] = df.apply(analisar_com_chatgpt, axis=1)
+    else:
+        df['Análise'] = 'Configure a chave de API do OpenAI no arquivo .env para habilitar a análise automática.'
+    
     return df.to_dict(orient='records')
 
 @app.route('/')
@@ -223,7 +415,23 @@ def upload():
 @app.route('/analisar')
 def analisar():
     resultados = processar_arquivos()
-    return render_template('resultado.html', resultados=resultados)
+    if not resultados:
+        return render_template('erro.html', mensagem="Nenhum autor encontrado na Petição Inicial. Verifique se o documento foi carregado corretamente.")
+    
+    # Salva os resultados em um arquivo Excel
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_arquivo = f"analise_processos_{timestamp}.xlsx"
+    caminho_excel = os.path.join(app.config['RESULTS_FOLDER'], nome_arquivo)
+    
+    # Converte para DataFrame e salva
+    df = pd.DataFrame(resultados)
+    df.to_excel(caminho_excel, index=False)
+    
+    return render_template('resultado.html', resultados=resultados, arquivo_excel=nome_arquivo)
+
+@app.route('/baixar_excel/<filename>')
+def baixar_excel(filename):
+    return send_file(os.path.join(app.config['RESULTS_FOLDER'], filename), as_attachment=True)
 
 @app.route('/limpar_uploads', methods=['POST'])
 def limpar_uploads():

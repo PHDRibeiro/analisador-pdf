@@ -2,45 +2,223 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Resultado da Análise</title>
-  <style>
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #999;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background-color: #eee;
-    }
-  </style>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <h1>Resultado da Análise</h1>
+  <div class="container">
+    <header>
+      <h1><i class="fas fa-file-contract"></i> Resultado da Análise</h1>
+      <p class="subtitle">Documentos encontrados e análise automatizada</p>
+    </header>
 
-  <table>
-    <thead>
-      <tr>
-        {% for col in resultados[0].keys() %}
-        <th>{{ col }}</th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
+    <div class="actions-bar">
+      <a href="/" class="btn secondary"><i class="fas fa-arrow-left"></i> Voltar ao Início</a>
+      <a href="/baixar_excel/{{ arquivo_excel }}" class="btn success"><i class="fas fa-file-excel"></i> Baixar Relatório Excel</a>
+    </div>
+
+    <div class="stats-summary">
+      <div class="stat-card">
+        <div class="stat-number">{{ resultados|length }}</div>
+        <div class="stat-label">Total de autores</div>
+      </div>
+      
+      {% set total_caf = resultados|selectattr('Informativo Caf', 'equalto', 'Sim')|list|length %}
+      <div class="stat-card">
+        <div class="stat-number">{{ total_caf }}</div>
+        <div class="stat-label">CAF</div>
+      </div>
+      
+      {% set total_spprev = resultados|selectattr('Informativo Spprev', 'equalto', 'Sim')|list|length %}
+      <div class="stat-card">
+        <div class="stat-number">{{ total_spprev }}</div>
+        <div class="stat-label">SPPREV</div>
+      </div>
+      
+      {% set total_extratao = resultados|selectattr('Informativo Extratão', 'equalto', 'Sim')|list|length %}
+      <div class="stat-card">
+        <div class="stat-number">{{ total_extratao }}</div>
+        <div class="stat-label">Extratão</div>
+      </div>
+    </div>
+
+    <div class="card results-table-container">
+      <h2><i class="fas fa-table"></i> Dados dos Autores</h2>
+      
+      <div class="filter-bar">
+        <input type="text" id="filtro-nome" placeholder="Filtrar por nome..." class="filter-input">
+        <select id="filtro-documentos" class="filter-select">
+          <option value="todos">Todos os status</option>
+          <option value="completo">Documentação completa</option>
+          <option value="incompleto">Documentação incompleta</option>
+        </select>
+      </div>
+
+      <div class="table-responsive">
+        <table id="resultados-tabela">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nome</th>
+              <th>RG</th>
+              <th>CPF</th>
+              <th>CAF</th>
+              <th>SPPREV</th>
+              <th>Extratão</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in resultados %}
+            <tr data-completo="{{ 'Sim' if 'informativo caf' in row and row['informativo caf'] == 'Sim' and 'informativo spprev' in row and row['informativo spprev'] == 'Sim' and 'informativo extratão' in row and row['informativo extratão'] == 'Sim' else 'Não' }}">
+              <td>{{ row.get('id', row.get('Id', '')) }}</td>
+              <td>{{ row.get('nome', row.get('Nome', '')) }}</td>
+              <td>{{ row.get('rg', row.get('Rg', '')) }}</td>
+              <td>{{ row.get('cpf', row.get('Cpf', '')) }}</td>
+              
+              <!-- CAF -->
+              <td class="{{ 'status-sim' if row['Informativo caf'] == 'Sim' else 'status-nao' }}">
+                {{ row['Informativo caf'] }}
+                {% if row['Página caf'] %}
+                <span class="pagina-ref">Pág. {{ row['Página caf'] }}</span>
+                {% endif %}
+              </td>
+
+              <!-- SPPREV -->
+              <td class="{{ 'status-sim' if row['Informativo spprev'] == 'Sim' else 'status-nao' }}">
+                {{ row['Informativo spprev'] }}
+                {% if row['Página spprev'] %}
+                <span class="pagina-ref">Pág. {{ row['Página spprev'] }}</span>
+                {% endif %}
+              </td>
+
+              <!-- Extratão -->
+              <td class="{{ 'status-sim' if row['Informativo extratão'] == 'Sim' else 'status-nao' }}">
+                {{ row['Informativo extratão'] }}
+                {% if row['Página extratão'] %}
+                <span class="pagina-ref">Pág. {{ row['Página extratão'] }}</span>
+                {% endif %}
+              </td>
+              
+              <td>
+                <button class="btn-icon" onclick="mostrarAnalise({{ loop.index0 }})">
+                  <i class="fas fa-eye"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Modal para exibir análise detalhada -->
+    <div id="analiseModal" class="modal">
+      <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Análise Detalhada</h2>
+        <div id="analise-detalhes" class="analise-detalhes"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Sistema de Análise de Processos &copy; 2025</p>
+  </footer>
+
+  <script>
+    // Armazena as análises para acesso rápido
+    const analises = [
       {% for row in resultados %}
-      <tr>
-        {% for col in row.values() %}
-        <td>{{ col }}</td>
-        {% endfor %}
-      </tr>
+        `{{ row['Análise']|replace("'", "\\'")|replace('"', '\\"')|replace('\n', '\\n') }}`,
       {% endfor %}
-    </tbody>
-  </table>
-
-  <a href="/">← Voltar</a>
+    ];
+  
+    // Modal de análise
+    const modal = document.getElementById('analiseModal');
+    const analiseDetalhes = document.getElementById('analise-detalhes');
+    const closeBtn = document.getElementsByClassName('close-modal')[0];
+  
+    function mostrarAnalise(index) {
+      const row = {{resultados|tojson}}[index]; // Obtém os dados diretamente do objeto JSON
+      
+      console.log('Dados da linha:', row); // Para debug
+      
+      // Verificar os valores dos informativos
+      const temCAF = row['Informativo caf'] === 'Sim';
+      const temSPPREV = row['Informativo spprev'] === 'Sim';
+      const temExtratao = row['Informativo extratão'] === 'Sim';
+      
+      analiseDetalhes.innerHTML = `
+        <h3>${row['Nome']}</h3>
+        <p class="analise-texto">${analises[index].replace(/\n/g, '<br>')}</p>
+        <div class="autor-info">
+          <div><strong>RG:</strong> ${row['Rg']}</div>
+          <div><strong>CPF:</strong> ${row['Cpf']}</div>
+        </div>
+        <div class="docs-status">
+          <div class="doc-item ${temCAF ? 'doc-presente' : 'doc-ausente'}">
+            <i class="fas ${temCAF ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+            <span>Informativo CAF</span>
+            ${row['Página caf'] ? `<div class="pagina-info">Pág. ${row['Página caf']}</div>` : ''}
+          </div>
+          <div class="doc-item ${temSPPREV ? 'doc-presente' : 'doc-ausente'}">
+            <i class="fas ${temSPPREV ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+            <span>Informativo SPPREV</span>
+            ${row['Página spprev'] ? `<div class="pagina-info">Pág. ${row['Página spprev']}</div>` : ''}
+          </div>
+          <div class="doc-item ${temExtratao ? 'doc-presente' : 'doc-ausente'}">
+            <i class="fas ${temExtratao ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+            <span>Informativo Extratão</span>
+            ${row['Página extratão'] ? `<div class="pagina-info">Pág. ${row['Página extratão']}</div>` : ''}
+          </div>
+        </div>
+      `;
+      modal.style.display = 'block';
+    }
+  
+    // Listeners para fechar o modal
+    closeBtn.addEventListener('click', function() {
+      modal.style.display = 'none';
+    });
+  
+    window.addEventListener('click', function(event) {
+      if (event.target === modal) {
+        modal.style.display = 'none';
+      }
+    });
+  
+    // Filtros da tabela
+    const filtroNome = document.getElementById('filtro-nome');
+    const filtroDocumentos = document.getElementById('filtro-documentos');
+    const tabela = document.getElementById('resultados-tabela');
+    const linhas = tabela.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+  
+    filtroNome.addEventListener('keyup', aplicarFiltros);
+    filtroDocumentos.addEventListener('change', aplicarFiltros);
+  
+    function aplicarFiltros() {
+      const textoBusca = filtroNome.value.toLowerCase();
+      const statusFiltro = filtroDocumentos.value;
+      
+      for (let i = 0; i < linhas.length; i++) {
+        const linha = linhas[i];
+        const nome = linha.getElementsByTagName('td')[1].textContent.toLowerCase();
+        const completo = linha.getAttribute('data-completo');
+        
+        let exibirLinha = nome.includes(textoBusca);
+        
+        if (statusFiltro === 'completo' && completo !== 'Sim') {
+          exibirLinha = false;
+        } else if (statusFiltro === 'incompleto' && completo !== 'Não') {
+          exibirLinha = false;
+        }
+        
+        linha.style.display = exibirLinha ? '' : 'none';
+      }
+    }
+  </script>
 </body>
 </html>
