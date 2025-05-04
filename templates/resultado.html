@@ -25,21 +25,42 @@
         <div class="stat-label">Total de autores</div>
       </div>
       
-      {% set total_caf = resultados|selectattr('Informativo Caf', 'equalto', 'Sim')|list|length %}
+      <!-- Inicializa contadores -->
+      {% set total_caf = namespace(value=0) %}
+      {% set total_spprev = namespace(value=0) %}
+      {% set total_extratao = namespace(value=0) %}
+      
+      <!-- Loop explícito com variáveis namespace para contagem -->
+      {% for row in resultados %}
+        {% for key, value in row.items() %}
+          {% if 'informativo caf' in key|lower and value == 'Sim' %}
+            {% set total_caf.value = total_caf.value + 1 %}
+          {% endif %}
+          
+          {% if 'informativo spprev' in key|lower and value == 'Sim' %}
+            {% set total_spprev.value = total_spprev.value + 1 %}
+          {% endif %}
+          
+          {% if 'informativo extratão' in key|lower or 'informativo extratao' in key|lower %}
+            {% if value == 'Sim' %}
+              {% set total_extratao.value = total_extratao.value + 1 %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+      
       <div class="stat-card">
-        <div class="stat-number">{{ total_caf }}</div>
+        <div class="stat-number">{{ total_caf.value }}</div>
         <div class="stat-label">CAF</div>
       </div>
       
-      {% set total_spprev = resultados|selectattr('Informativo Spprev', 'equalto', 'Sim')|list|length %}
       <div class="stat-card">
-        <div class="stat-number">{{ total_spprev }}</div>
+        <div class="stat-number">{{ total_spprev.value }}</div>
         <div class="stat-label">SPPREV</div>
       </div>
       
-      {% set total_extratao = resultados|selectattr('Informativo Extratão', 'equalto', 'Sim')|list|length %}
       <div class="stat-card">
-        <div class="stat-number">{{ total_extratao }}</div>
+        <div class="stat-number">{{ total_extratao.value }}</div>
         <div class="stat-label">Extratão</div>
       </div>
     </div>

@@ -172,5 +172,26 @@
       }
     }
   </script>
+  
+  <!-- Adicione este HTML ao final do body no arquivo index.html, antes do fechamento da tag </body> -->
+<div id="loading-overlay" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Analisando documentos...</div>
+  <div class="loading-details">Este processo pode demorar alguns instantes dependendo da quantidade de arquivos.</div>
+</div>
+
+<script>
+  // Adicione este JavaScript ao final do arquivo index.html
+  document.addEventListener('DOMContentLoaded', function() {
+    const analisarForm = document.querySelector('form[action="/analisar"]');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    
+    if (analisarForm) {
+      analisarForm.addEventListener('submit', function() {
+        loadingOverlay.style.display = 'flex';
+      });
+    }
+  });
+</script>
 </body>
 </html>

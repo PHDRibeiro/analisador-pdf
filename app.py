@@ -191,6 +191,27 @@ def analisar_com_chatgpt(dados_autor):
     Usa a API do OpenAI para analisar os dados do autor e fornecer insights
     """
     try:
+        # Debug - imprime todas as chaves e valores
+        print("DEBUG - TODAS AS CHAVES E VALORES:")
+        for chave, valor in dados_autor.items():
+            print(f"  {chave}: {valor}")
+            
+        # Determina se documentos estão presentes de forma mais explícita
+        caf_presente = dados_autor.get('Informativo caf', 'Não') == 'Sim'
+        spprev_presente = dados_autor.get('Informativo spprev', 'Não') == 'Sim'
+        extratao_presente = dados_autor.get('Informativo extratão', 'Não') == 'Sim'
+        
+        # Lista de documentos faltantes para maior clareza
+        docs_faltantes = []
+        if not caf_presente:
+            docs_faltantes.append("Informativo CAF")
+        if not spprev_presente:
+            docs_faltantes.append("Informativo SPPREV")
+        if not extratao_presente:
+            docs_faltantes.append("Informativo Extratão")
+            
+        docs_faltantes_texto = "Nenhum documento está faltando." if not docs_faltantes else ", ".join(docs_faltantes)
+        
         prompt = f"""
         Analise os seguintes dados de processo judicial:
         
@@ -198,27 +219,29 @@ def analisar_com_chatgpt(dados_autor):
         CPF: {dados_autor.get('Cpf', 'Não informado')}
         RG: {dados_autor.get('Rg', 'Não informado')}
         
-        Documentos encontrados:
-        - Informativo CAF: {dados_autor.get('Informativo Caf', 'Não')}
-        - Informativo SPPREV: {dados_autor.get('Informativo Spprev', 'Não')}
-        - Informativo Extratão: {dados_autor.get('Informativo Extratão', 'Não')}
+        Status dos documentos:
+        - Informativo CAF: {'PRESENTE' if caf_presente else 'AUSENTE'}
+        - Informativo SPPREV: {'PRESENTE' if spprev_presente else 'AUSENTE'}
+        - Informativo Extratão: {'PRESENTE' if extratao_presente else 'AUSENTE'}
+        
+        Documentos faltantes: {docs_faltantes_texto}
         
         Com base nessas informações, responda de forma objetiva (máximo 2 parágrafos):
-        1. Quais documentos estão faltando para este autor?
-        2. Quais são as recomendações para prosseguir com o processo?
+        1. Confirme quais documentos estão faltando para este autor.
+        2. Quais são as recomendações específicas para prosseguir com o processo?
         """
         
-        # Obtenha a chave da API diretamente do ambiente
-        api_key = os.getenv('OPENAI_API_KEY')
-        print(f"Chave da API (4 primeiros caracteres): {api_key[:15] if api_key else 'Nenhuma chave encontrada'}")
+        print("DEBUG - PROMPT ENVIADO PARA API:")
+        print(prompt)
         
-        # Inicialize o cliente com a chave explícita
+        # Inicialize o cliente com a chave
+        api_key = os.getenv('OPENAI_API_KEY')
         client = openai.OpenAI(api_key=api_key)
         
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "Você é um assistente especializado em processos judiciais, com foco em análise de documentação."},
+                {"role": "system", "content": "Você é um assistente especializado em processos judiciais, com foco em análise de documentação. Seja preciso ao identificar documentos faltantes com base no status PRESENTE ou AUSENTE."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=250
