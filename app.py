@@ -150,7 +150,14 @@ def processar_arquivos():
 
 @app.route('/')
 def index():
-    return render_template('index.html', tipos=TIPOS)
+    arquivos = os.listdir(app.config['UPLOAD_FOLDER']) if os.path.exists(app.config['UPLOAD_FOLDER']) else []
+    tipos_encontrados = [arq.split('__', 1)[0].replace("_", " ") for arq in arquivos if '__' in arq]
+
+    tem_inicial = 'Inicial' in tipos_encontrados
+    tem_informativo = any(t in tipos_encontrados for t in ['Informativo Extratão', 'Informativo CAF', 'Informativo SPPREV'])
+    pode_analisar = tem_inicial and tem_informativo
+
+    return render_template('index.html', tipos=TIPOS, pode_analisar=pode_analisar, arquivos=arquivos)
 
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -173,6 +180,16 @@ def upload():
 def analisar():
     resultados = processar_arquivos()
     return render_template('resultado.html', resultados=resultados)
+
+@app.route('/limpar_uploads', methods=['POST'])
+def limpar_uploads():
+    pasta = app.config['UPLOAD_FOLDER']
+    if os.path.exists(pasta):
+        for arquivo in os.listdir(pasta):
+            caminho = os.path.join(pasta, arquivo)
+            if os.path.isfile(caminho):
+                os.remove(caminho)
+    return redirect(url_for('index'))
 
 # --- Execução ---
 if __name__ == '__main__':

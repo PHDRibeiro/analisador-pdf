@@ -1,8 +1,89 @@
 body {
-    font-family: Arial;
-    margin: 40px;
-  }
-  .pdf-bloco {
-    margin-bottom: 10px;
-  }
-  
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #f5f6fa;
+  margin: 0;
+  padding: 30px;
+}
+
+h1, h2 {
+  color: #2f3640;
+}
+
+form {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  max-width: 500px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.05);
+  margin-bottom: 20px;
+}
+
+label {
+  display: block;
+  margin-top: 10px;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+input[type="file"],
+select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #dcdde1;
+  font-size: 14px;
+}
+
+button {
+  padding: 12px;
+  margin-top: 15px;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 15px;
+  cursor: pointer;
+  transition: 0.3s ease;
+}
+
+button[type="submit"] {
+  background-color: #0033a0; /* Azul mais escuro */
+  color: white;
+}
+
+button[type="submit"]:hover {
+  background-color: #001f70; /* Hover mais escuro */
+}
+
+button.danger {
+  background-color: #c0c0c0; /* Cinza */
+  color: #2f3640;
+}
+
+button.danger:hover {
+  background-color: #a8a8a8;
+}
+
+ul {
+  padding-left: 20px;
+}
+
+button.analisar {
+  background-color: #006e90;
+  color: white;
+  width: 100%;
+  padding: 12px;
+  margin-top: 15px;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 15px;
+  cursor: pointer;
+  transition: 0.3s ease;
+  box-sizing: border-box;
+}
+
+button.analisar:hover {
+  background-color: #005676;
+}

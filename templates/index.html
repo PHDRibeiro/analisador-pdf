@@ -6,21 +6,44 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <h1>Upload de PDFs para Análise</h1>
+  <h1>Importar documentos</h1>
 
   <form action="/upload" method="POST" enctype="multipart/form-data">
-    <label>Selecionar arquivos (vários de uma vez):</label><br>
-    <input type="file" name="pdfs" multiple required><br><br>
-  
-    <label>Tipo de documento:</label><br>
+    <label for="pdfs">Selecionar arquivos (vários de uma vez):</label>
+    <input type="file" name="pdfs" multiple required>
+
+    <label for="tipo">Tipo de documento:</label>
     <select name="tipo" required>
       {% for tipo in tipos %}
       <option value="{{ tipo }}">{{ tipo }}</option>
       {% endfor %}
-    </select><br><br>
+    </select>
+
+    <button type="submit">📥 Enviar Arquivos</button>
+  </form>
+
+  {% if pode_analisar %}
+  <div style="max-width: 500px; margin-top: 20px;">
+    <form action="/analisar" method="GET">
+      <button type="submit" class="analisar">📊 Analisar</button>
+    </form>
+  </div>
+  {% endif %}
   
-    <button type="submit">Enviar para Análise</button>
-  </form> 
+  <hr>
+
+  <h2>Arquivos Enviados</h2>
+  <ul>
+    {% for arquivo in arquivos %}
+      <li>{{ arquivo }}</li>
+    {% else %}
+      <li><i>Nenhum arquivo enviado ainda.</i></li>
+    {% endfor %}
+  </ul>
+
+  <form action="/limpar_uploads" method="POST" onsubmit="return confirm('Tem certeza que deseja apagar todos os arquivos da pasta uploads?');">
+    <button class="danger" type="submit">🗑️ Limpar Pasta Uploads</button>
+  </form>
 
   <script>
     function adicionarBloco() {
