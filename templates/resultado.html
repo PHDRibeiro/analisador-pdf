@@ -12,6 +12,20 @@
     <header>
       <h1><i class="fas fa-file-contract"></i> Resultado da Análise</h1>
       <p class="subtitle">Documentos encontrados e análise automatizada</p>
+      
+      {% if tipo_acao %}
+      <div class="tipo-acao-banner">
+        <div class="tipo-acao-info">
+          <span class="tipo-acao-label">Tipo de Ação:</span>
+          <span class="tipo-acao-valor">{{ tipo_acao }}</span>
+          
+          {% if data_distribuicao %}
+          <span class="tipo-acao-label">Data de Distribuição:</span>
+          <span class="tipo-acao-valor">{{ data_distribuicao }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
     </header>
 
     <div class="actions-bar">
@@ -100,26 +114,26 @@
               <td>{{ row.get('cpf', row.get('Cpf', '')) }}</td>
               
               <!-- CAF -->
-              <td class="{{ 'status-sim' if row['Informativo caf'] == 'Sim' else 'status-nao' }}">
-                {{ row['Informativo caf'] }}
-                {% if row['Página caf'] %}
-                <span class="pagina-ref">Pág. {{ row['Página caf'] }}</span>
+              <td class="{{ 'status-sim' if row['Informativo CAF'] == 'Sim' else 'status-nao' }}">
+                {{ row['Informativo CAF'] }}
+                {% if row['Página CAF'] %}
+                <span class="pagina-ref">Pág. {{ row['Página CAF'] }}</span>
                 {% endif %}
               </td>
 
               <!-- SPPREV -->
-              <td class="{{ 'status-sim' if row['Informativo spprev'] == 'Sim' else 'status-nao' }}">
-                {{ row['Informativo spprev'] }}
-                {% if row['Página spprev'] %}
-                <span class="pagina-ref">Pág. {{ row['Página spprev'] }}</span>
+              <td class="{{ 'status-sim' if row['Informativo SPPREV'] == 'Sim' else 'status-nao' }}">
+                {{ row['Informativo SPPREV'] }}
+                {% if row['Página SPPREV'] %}
+                <span class="pagina-ref">Pág. {{ row['Página SPPREV'] }}</span>
                 {% endif %}
               </td>
 
               <!-- Extratão -->
-              <td class="{{ 'status-sim' if row['Informativo extratão'] == 'Sim' else 'status-nao' }}">
-                {{ row['Informativo extratão'] }}
-                {% if row['Página extratão'] %}
-                <span class="pagina-ref">Pág. {{ row['Página extratão'] }}</span>
+              <td class="{{ 'status-sim' if row['Informativo Extratão'] == 'Sim' else 'status-nao' }}">
+                {{ row['Informativo Extratão'] }}
+                {% if row['Página Extratão'] %}
+                <span class="pagina-ref">Pág. {{ row['Página Extratão'] }}</span>
                 {% endif %}
               </td>
               
@@ -150,96 +164,88 @@
   </footer>
 
   <script>
-    // Armazena as análises para acesso rápido
-    const analises = [
-      {% for row in resultados %}
-        `{{ row['Análise']|replace("'", "\\'")|replace('"', '\\"')|replace('\n', '\\n') }}`,
-      {% endfor %}
-    ];
+// Armazena as análises para acesso rápido
+const analises = [
+  {% for row in resultados %}
+    `{{ row['Análise']|replace("'", "\\'")|replace('"', '\\"')|replace('\n', '\\n') }}`,
+  {% endfor %}
+];
+
+// Modal de análise
+const modal = document.getElementById('analiseModal');
+const closeBtn = document.getElementsByClassName('close-modal')[0];
+
+function mostrarAnalise(index) {
+  // Usa os dados diretamente do objeto resultados
+  const autor = {{ resultados|tojson }}[index];
   
-    // Modal de análise
-    const modal = document.getElementById('analiseModal');
-    const analiseDetalhes = document.getElementById('analise-detalhes');
-    const closeBtn = document.getElementsByClassName('close-modal')[0];
+  document.getElementById('analise-detalhes').innerHTML = `
+    <h3>${autor.Nome}</h3>
+    <p class="analise-texto">${analises[index].replace(/\n/g, '<br>')}</p>
+    <div class="autor-info">
+      <div><strong>RG:</strong> ${autor.Rg}</div>
+      <div><strong>CPF:</strong> ${autor.Cpf}</div>
+    </div>
+    <div class="docs-status">
+      <div class="doc-item ${autor['Informativo CAF'] === 'Sim' ? 'doc-presente' : 'doc-ausente'}">
+        <i class="fas ${autor['Informativo CAF'] === 'Sim' ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+        <span>Informativo CAF</span>
+        ${autor['Página CAF'] ? `<div class="pagina-info">Pág. ${autor['Página CAF']}</div>` : ''}
+      </div>
+      <div class="doc-item ${autor['Informativo SPPREV'] === 'Sim' ? 'doc-presente' : 'doc-ausente'}">
+        <i class="fas ${autor['Informativo SPPREV'] === 'Sim' ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+        <span>Informativo SPPREV</span>
+        ${autor['Página SPPREV'] ? `<div class="pagina-info">Pág. ${autor['Página SPPREV']}</div>` : ''}
+      </div>
+      <div class="doc-item ${autor['Informativo Extratão'] === 'Sim' ? 'doc-presente' : 'doc-ausente'}">
+        <i class="fas ${autor['Informativo Extratão'] === 'Sim' ? 'fa-check-circle' : 'fa-times-circle'}"></i>
+        <span>Informativo Extratão</span>
+        ${autor['Página Extratão'] ? `<div class="pagina-info">Pág. ${autor['Página Extratão']}</div>` : ''}
+      </div>
+    </div>
+  `;
+  modal.style.display = 'block';
+}
+
+closeBtn.onclick = function() {
+  modal.style.display = 'none';
+}
+
+window.onclick = function(event) {
+  if (event.target == modal) {
+    modal.style.display = 'none';
+  }
+}
+
+// Filtros da tabela
+const filtroNome = document.getElementById('filtro-nome');
+const filtroDocumentos = document.getElementById('filtro-documentos');
+const tabela = document.getElementById('resultados-tabela');
+const linhas = tabela.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+filtroNome.addEventListener('keyup', aplicarFiltros);
+filtroDocumentos.addEventListener('change', aplicarFiltros);
+
+function aplicarFiltros() {
+  const textoBusca = filtroNome.value.toLowerCase();
+  const statusFiltro = filtroDocumentos.value;
   
-    function mostrarAnalise(index) {
-      const row = {{resultados|tojson}}[index]; // Obtém os dados diretamente do objeto JSON
-      
-      console.log('Dados da linha:', row); // Para debug
-      
-      // Verificar os valores dos informativos
-      const temCAF = row['Informativo caf'] === 'Sim';
-      const temSPPREV = row['Informativo spprev'] === 'Sim';
-      const temExtratao = row['Informativo extratão'] === 'Sim';
-      
-      analiseDetalhes.innerHTML = `
-        <h3>${row['Nome']}</h3>
-        <p class="analise-texto">${analises[index].replace(/\n/g, '<br>')}</p>
-        <div class="autor-info">
-          <div><strong>RG:</strong> ${row['Rg']}</div>
-          <div><strong>CPF:</strong> ${row['Cpf']}</div>
-        </div>
-        <div class="docs-status">
-          <div class="doc-item ${temCAF ? 'doc-presente' : 'doc-ausente'}">
-            <i class="fas ${temCAF ? 'fa-check-circle' : 'fa-times-circle'}"></i>
-            <span>Informativo CAF</span>
-            ${row['Página caf'] ? `<div class="pagina-info">Pág. ${row['Página caf']}</div>` : ''}
-          </div>
-          <div class="doc-item ${temSPPREV ? 'doc-presente' : 'doc-ausente'}">
-            <i class="fas ${temSPPREV ? 'fa-check-circle' : 'fa-times-circle'}"></i>
-            <span>Informativo SPPREV</span>
-            ${row['Página spprev'] ? `<div class="pagina-info">Pág. ${row['Página spprev']}</div>` : ''}
-          </div>
-          <div class="doc-item ${temExtratao ? 'doc-presente' : 'doc-ausente'}">
-            <i class="fas ${temExtratao ? 'fa-check-circle' : 'fa-times-circle'}"></i>
-            <span>Informativo Extratão</span>
-            ${row['Página extratão'] ? `<div class="pagina-info">Pág. ${row['Página extratão']}</div>` : ''}
-          </div>
-        </div>
-      `;
-      modal.style.display = 'block';
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+    const nome = linha.getElementsByTagName('td')[1].textContent.toLowerCase();
+    const completo = linha.getAttribute('data-completo');
+    
+    let exibirLinha = nome.includes(textoBusca);
+    
+    if (statusFiltro === 'completo' && completo !== 'Sim') {
+      exibirLinha = false;
+    } else if (statusFiltro === 'incompleto' && completo !== 'Não') {
+      exibirLinha = false;
     }
-  
-    // Listeners para fechar o modal
-    closeBtn.addEventListener('click', function() {
-      modal.style.display = 'none';
-    });
-  
-    window.addEventListener('click', function(event) {
-      if (event.target === modal) {
-        modal.style.display = 'none';
-      }
-    });
-  
-    // Filtros da tabela
-    const filtroNome = document.getElementById('filtro-nome');
-    const filtroDocumentos = document.getElementById('filtro-documentos');
-    const tabela = document.getElementById('resultados-tabela');
-    const linhas = tabela.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
-  
-    filtroNome.addEventListener('keyup', aplicarFiltros);
-    filtroDocumentos.addEventListener('change', aplicarFiltros);
-  
-    function aplicarFiltros() {
-      const textoBusca = filtroNome.value.toLowerCase();
-      const statusFiltro = filtroDocumentos.value;
-      
-      for (let i = 0; i < linhas.length; i++) {
-        const linha = linhas[i];
-        const nome = linha.getElementsByTagName('td')[1].textContent.toLowerCase();
-        const completo = linha.getAttribute('data-completo');
-        
-        let exibirLinha = nome.includes(textoBusca);
-        
-        if (statusFiltro === 'completo' && completo !== 'Sim') {
-          exibirLinha = false;
-        } else if (statusFiltro === 'incompleto' && completo !== 'Não') {
-          exibirLinha = false;
-        }
-        
-        linha.style.display = exibirLinha ? '' : 'none';
-      }
-    }
+    
+    linha.style.display = exibirLinha ? '' : 'none';
+  }
+}
   </script>
 </body>
 </html>

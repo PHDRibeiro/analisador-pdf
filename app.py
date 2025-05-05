@@ -186,31 +186,50 @@ def extrair_paginas_arquivo(nome_arquivo):
     # Se nenhum padrão for encontrado
     return ""
 
-def analisar_com_chatgpt(dados_autor):
+def analisar_com_chatgpt(dados_autor, tipo_acao='', data_distribuicao=''):
     """
     Usa a API do OpenAI para analisar os dados do autor e fornecer insights
     """
     try:
-        # Debug - imprime todas as chaves e valores
-        print("DEBUG - TODAS AS CHAVES E VALORES:")
-        for chave, valor in dados_autor.items():
-            print(f"  {chave}: {valor}")
+        # Formata a data para o padrão brasileiro (dd/mm/YYYY)
+        data_formatada = ''
+        if data_distribuicao:
+            try:
+                # Supondo que a data venha no formato YYYY-mm-dd (HTML date input)
+                partes = data_distribuicao.split('-')
+                if len(partes) == 3:
+                    ano, mes, dia = partes
+                    data_formatada = f"{dia}/{mes}/{ano}"
+                else:
+                    # Se não conseguir separar, usa a string original
+                    data_formatada = data_distribuicao
+            except Exception as e:
+                print(f"Erro ao formatar data: {e}")
+                data_formatada = data_distribuicao    
+
+        # Constrói informações adicionais para o prompt com base no tipo de ação
+        info_adicional = ""
+        if tipo_acao == 'Adicional APEOESP':
+            info_adicional = """
+            Tipo de Ação: Adicional APEOESP
             
-        # Determina se documentos estão presentes de forma mais explícita
-        caf_presente = dados_autor.get('Informativo caf', 'Não') == 'Sim'
-        spprev_presente = dados_autor.get('Informativo spprev', 'Não') == 'Sim'
-        extratao_presente = dados_autor.get('Informativo extratão', 'Não') == 'Sim'
-        
-        # Lista de documentos faltantes para maior clareza
-        docs_faltantes = []
-        if not caf_presente:
-            docs_faltantes.append("Informativo CAF")
-        if not spprev_presente:
-            docs_faltantes.append("Informativo SPPREV")
-        if not extratao_presente:
-            docs_faltantes.append("Informativo Extratão")
+            Regras para a Análise (siga com rigor):
+            - Para que o processo esteja apto a prosseguir, é suficiente a presença de apenas um dos seguintes documentos: o Informativo do CAF ou o Informativo do Extratão.
+            - A presença de qualquer um dos dois documentos já viabiliza os cálculos e permite o prosseguimento do processo, mesmo que o outro esteja ausente.
+            - Caso nenhum dos dois esteja disponível (Informativo CAF e Informativo Extratão), será necessário solicitar nos autos que ao menos um deles seja providenciado.
+            - Atenção: Se existir somente o Informativo do SPPREV o cálculo não está apto a seguir.
+            """
+        elif tipo_acao == 'Procedimento Ordinário':
+            info_adicional = f"""
+            Tipo de Ação: Procedimento Ordinário
+            Data de Distribuição: {data_formatada}
             
-        docs_faltantes_texto = "Nenhum documento está faltando." if not docs_faltantes else ", ".join(docs_faltantes)
+            Regras para a Análise (siga com rigor):
+            1. Se o Informativo do Extratão estiver disponível (valor "Sim"), o processo está automaticamente apto. Não é necessário verificar mais nada.  
+            2. Se o Extratão NÃO estiver disponível (valor "Não"), a aptidão depende da data de distribuição:  
+                a) Para processos distribuídos a partir de 01/05/2016, o Informativo do SPPREV, sozinho, é suficiente.  
+                b) Para processos distribuídos antes de 30/04/2016, são obrigatórios tanto o Informativo do CAF quanto o do SPPREV.
+            """
         
         prompt = f"""
         Analise os seguintes dados de processo judicial:
@@ -219,29 +238,34 @@ def analisar_com_chatgpt(dados_autor):
         CPF: {dados_autor.get('Cpf', 'Não informado')}
         RG: {dados_autor.get('Rg', 'Não informado')}
         
-        Status dos documentos:
-        - Informativo CAF: {'PRESENTE' if caf_presente else 'AUSENTE'}
-        - Informativo SPPREV: {'PRESENTE' if spprev_presente else 'AUSENTE'}
-        - Informativo Extratão: {'PRESENTE' if extratao_presente else 'AUSENTE'}
+        Documentos encontrados:
+        - Informativo CAF: {dados_autor.get('caf', 'Não')}
+        - Informativo SPPREV: {dados_autor.get('spprev', 'Não')}
+        - Informativo Extratão: {dados_autor.get('extratao', 'Não')}
+
+        Para a análise leve em conta as seguintes considerações. Essas são as diretrizes principais para as análises, não as ignore:
+        {info_adicional}
         
-        Documentos faltantes: {docs_faltantes_texto}
-        
-        Com base nessas informações, responda de forma objetiva (máximo 2 parágrafos):
-        1. Confirme quais documentos estão faltando para este autor.
-        2. Quais são as recomendações específicas para prosseguir com o processo?
+        Com base nessas informações, responda de forma objetiva (máximo 1 parágrafo):
+        Considerando o tipo de ação e os informativos encontrados, responda de forma objetiva se o processo está apto a seguir para cálculo, e nada mais. Se a resposta for negativa, seja objetivo e indique de forma clara quais documentos estão faltando.
+        → Se estiver apto, inicie a resposta com o ícone ✅.
+        → Se não estiver apto, inicie a resposta com o ícone ❌.
+        → IMPORTANTE: Não utilize ** e nenhuma outra forma de destacar o texto.
         """
         
-        print("DEBUG - PROMPT ENVIADO PARA API:")
+        # Debug simples - apenas mostra o prompt
+        print("\n----- PROMPT PARA API -----")
         print(prompt)
+        print("---------------------------\n")
         
-        # Inicialize o cliente com a chave
+        # Inicialize o cliente com a chave explícita
         api_key = os.getenv('OPENAI_API_KEY')
         client = openai.OpenAI(api_key=api_key)
         
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Você é um assistente especializado em processos judiciais, com foco em análise de documentação. Seja preciso ao identificar documentos faltantes com base no status PRESENTE ou AUSENTE."},
+                {"role": "system", "content": f"Você é um assistente especializado em processos judiciais, com foco em análise de documentação para ações do tipo {tipo_acao}."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=250
@@ -253,7 +277,7 @@ def analisar_com_chatgpt(dados_autor):
         print(f"Erro ao usar a API OpenAI: {e}")
         return "Não foi possível realizar a análise automatizada. Verifique sua chave de API."
     
-def processar_arquivos():
+def processar_arquivos(tipo_acao='', data_distribuicao=''):
     pasta = 'uploads'
     arquivos = os.listdir(pasta)
 
@@ -397,7 +421,7 @@ def processar_arquivos():
     # Define nomes de colunas padronizados, preservando os nomes específicos para os informativos
     colunas_padronizadas = []
     for col in df.columns:
-        if col.startswith('informativo') or col.startswith('página'):
+        if col.startswith('Informativo') or col.startswith('Página'):
             # Mantém o formato original para colunas de informativos e páginas
             colunas_padronizadas.append(col)
         else:
@@ -406,9 +430,32 @@ def processar_arquivos():
             
     df.columns = colunas_padronizadas
     
+    # Adiciona as informações do tipo de ação
+    df['Tipo Acao'] = tipo_acao
+    if data_distribuicao:
+        df['Data Distribuicao'] = data_distribuicao
+    
+    # Para debug - imprime os nomes das colunas após a padronização
+    print("DEBUG - Nomes das colunas após padronização:")
+    for col in df.columns:
+        print(f"  {col}")
+    
     # Adiciona coluna de análise usando a API do OpenAI
     if 'OPENAI_API_KEY' in os.environ and os.environ['OPENAI_API_KEY']:
-        df['Análise'] = df.apply(analisar_com_chatgpt, axis=1)
+        # Passamos os valores específicos para a função analisar_com_chatgpt
+        def analisar_com_dados_especificos(row):
+            # Criamos um dicionário com os dados necessários para a análise
+            dados_para_analise = {
+                'Nome': row['Nome'],
+                'Cpf': row['Cpf'],
+                'Rg': row['Rg'],
+                'caf': row['Informativo CAF'],
+                'spprev': row['Informativo SPPREV'], 
+                'extratao': row['Informativo Extratão']
+            }
+            return analisar_com_chatgpt(dados_para_analise, tipo_acao, data_distribuicao)
+        
+        df['Análise'] = df.apply(analisar_com_dados_especificos, axis=1)
     else:
         df['Análise'] = 'Configure a chave de API do OpenAI no arquivo .env para habilitar a análise automática.'
     
@@ -437,7 +484,10 @@ def upload():
 
 @app.route('/analisar')
 def analisar():
-    resultados = processar_arquivos()
+    tipo_acao = request.args.get('tipo_acao', '')
+    data_distribuicao = request.args.get('data_distribuicao', '')
+    
+    resultados = processar_arquivos(tipo_acao, data_distribuicao)
     if not resultados:
         return render_template('erro.html', mensagem="Nenhum autor encontrado na Petição Inicial. Verifique se o documento foi carregado corretamente.")
     
@@ -450,7 +500,7 @@ def analisar():
     df = pd.DataFrame(resultados)
     df.to_excel(caminho_excel, index=False)
     
-    return render_template('resultado.html', resultados=resultados, arquivo_excel=nome_arquivo)
+    return render_template('resultado.html', resultados=resultados, arquivo_excel=nome_arquivo, tipo_acao=tipo_acao, data_distribuicao=data_distribuicao)
 
 @app.route('/baixar_excel/<filename>')
 def baixar_excel(filename):

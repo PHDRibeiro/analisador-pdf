@@ -629,3 +629,35 @@ form[action="/limpar_uploads"] {
   max-width: 80%;
   text-align: center;
 }
+.select-full,
+.input-full {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--gray-light);
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  margin-bottom: 15px;
+}
+
+.select-full:focus,
+.input-full:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 51, 160, 0.1);
+}
+
+#form-analise .form-group {
+  margin-bottom: 20px;
+}
+
+#form-analise label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+/* Estilo para o botão de análise */
+#form-analise .btn {
+  margin-top: 10px;
+}

@@ -44,9 +44,50 @@
     <div class="card">
       <h2><i class="fas fa-chart-bar"></i> Analisar documentos</h2>
       <p>Você já carregou os arquivos necessários para iniciar a análise.</p>
-      <form action="/analisar" method="GET">
+      
+      <form action="/analisar" method="GET" id="form-analise">
+        <div class="form-group">
+          <label for="tipo_acao">Tipo de Ação Judicial:</label>
+          <select name="tipo_acao" id="tipo_acao" required class="select-full">
+            <option value="">Selecione o tipo de ação</option>
+            <option value="Adicional APEOESP">Adicional APEOESP</option>
+            <option value="Procedimento Ordinário">Procedimento Ordinário</option>
+          </select>
+        </div>
+        
+        <div class="form-group" id="data_distribuicao_group" style="display: none;">
+          <label for="data_distribuicao">Data de Distribuição:</label>
+          <input type="date" name="data_distribuicao" id="data_distribuicao" class="input-full">
+        </div>
+        
         <button type="submit" class="btn success"><i class="fas fa-search"></i> Iniciar Análise</button>
       </form>
+      
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          const tipoAcaoSelect = document.getElementById('tipo_acao');
+          const dataDistribuicaoGroup = document.getElementById('data_distribuicao_group');
+          const dataDistribuicaoInput = document.getElementById('data_distribuicao');
+          
+          tipoAcaoSelect.addEventListener('change', function() {
+            if (this.value === 'Procedimento Ordinário') {
+              dataDistribuicaoGroup.style.display = 'block';
+              dataDistribuicaoInput.required = true;
+            } else {
+              dataDistribuicaoGroup.style.display = 'none';
+              dataDistribuicaoInput.required = false;
+            }
+          });
+          
+          // Validação do formulário
+          document.getElementById('form-analise').addEventListener('submit', function(e) {
+            if (tipoAcaoSelect.value === 'Procedimento Ordinário' && !dataDistribuicaoInput.value) {
+              e.preventDefault();
+              alert('Por favor, informe a data de distribuição para o Procedimento Ordinário.');
+            }
+          });
+        });
+      </script>
     </div>
     {% endif %}
     
@@ -172,7 +213,7 @@
       }
     }
   </script>
-  
+
   <!-- Adicione este HTML ao final do body no arquivo index.html, antes do fechamento da tag </body> -->
 <div id="loading-overlay" class="loading-overlay">
   <div class="spinner"></div>
