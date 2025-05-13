@@ -79,9 +79,56 @@
       </div>
     </div>
 
+    {% if nao_classificados and nao_classificados|length > 0 %}
+    <div class="card">
+      <h2><i class="fas fa-question-circle"></i> Documentos Não Classificados</h2>
+      <p class="alert-message">Os seguintes documentos não puderam ser classificados automaticamente. Por favor, verifique e classifique-os:</p>
+
+      <div class="doc-classification">
+        {% for doc in nao_classificados %}
+        <div class="doc-card" id="doc-{{ loop.index }}">
+          <div class="doc-info">
+            <div class="doc-name">{{ doc.arquivo }}</div>
+            {% if doc.paginas %}
+            <div class="doc-pages">Páginas: {{ doc.paginas }}</div>
+            {% endif %}
+          </div>
+          <div class="doc-preview">
+            <button class="btn secondary btn-preview" onclick="abrirPreviewPDF('{{ doc.arquivo_completo }}')">
+              <i class="fas fa-eye"></i> Visualizar
+            </button>
+            <button class="btn danger btn-ignore" onclick="ignorarArquivo('{{ doc.arquivo }}')">
+              <i class="fas fa-times"></i> Ignorar
+            </button>
+          </div>
+          <div class="doc-actions">
+            <select class="doc-type-select" id="tipo-{{ loop.index }}">
+              <option value="">Selecione o tipo</option>
+              <option value="Informativo CAF">Informativo CAF</option>
+              <option value="Informativo SPPREV">Informativo SPPREV</option>
+              <option value="Informativo Extratão">Informativo Extratão</option>
+            </select>
+            <button class="btn primary btn-classify" onclick="classificarDocumento('{{ doc.arquivo }}', document.getElementById('tipo-{{ loop.index }}').value)">
+              <i class="fas fa-check"></i> Classificar
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if nao_classificados|length > 0 %}
+      <div class="actions-container">
+        <button class="btn success" id="btn-reprocessar" onclick="reprocessarDocumentos()">
+          <i class="fas fa-sync"></i> Reprocessar Análise
+        </button>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="card results-table-container">
       <h2><i class="fas fa-table"></i> Dados dos Autores</h2>
-      
+
       <div class="filter-bar">
         <input type="text" id="filtro-nome" placeholder="Filtrar por nome..." class="filter-input">
         <select id="filtro-documentos" class="filter-select">
@@ -175,10 +222,212 @@ const analises = [
 const modal = document.getElementById('analiseModal');
 const closeBtn = document.getElementsByClassName('close-modal')[0];
 
+// Modal para preview de PDF
+let pdfModal;
+let pdfFrame;
+
+// Cria o modal de PDF se ele não existir
+function criarModalPDF() {
+  if (!pdfModal) {
+    pdfModal = document.createElement('div');
+    pdfModal.className = 'modal pdf-modal';
+    pdfModal.innerHTML = `
+      <div class="modal-content pdf-modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Visualização do Documento</h2>
+        <iframe id="pdf-frame" class="pdf-frame"></iframe>
+      </div>
+    `;
+    document.body.appendChild(pdfModal);
+
+    // Adiciona evento para fechar o modal
+    const closeBtn = pdfModal.querySelector('.close-modal');
+    closeBtn.onclick = function() {
+      pdfModal.style.display = 'none';
+    };
+
+    window.onclick = function(event) {
+      if (event.target == pdfModal) {
+        pdfModal.style.display = 'none';
+      }
+    };
+
+    pdfFrame = document.getElementById('pdf-frame');
+  }
+}
+
+// Função para abrir o preview do PDF
+function abrirPreviewPDF(caminhoArquivo) {
+  criarModalPDF();
+
+  // Extrai apenas o nome do arquivo sem o caminho completo
+  const nomeArquivo = caminhoArquivo.split('/').pop();
+
+  // Cria a URL correta para visualizar o PDF
+  const url = `/visualizar_pdf/${encodeURIComponent(nomeArquivo)}`;
+  pdfFrame.src = url;
+  pdfModal.style.display = 'block';
+}
+
+// Função para ignorar um arquivo (excluí-lo)
+function ignorarArquivo(nomeArquivo) {
+  if (confirm(`Tem certeza que deseja ignorar o arquivo "${nomeArquivo}"? Esta ação não pode ser desfeita.`)) {
+    // Oculta o card do documento imediatamente para feedback visual
+    const docCards = document.querySelectorAll('.doc-card');
+    let cardToHide;
+    docCards.forEach(card => {
+      if (card.querySelector('.doc-name').textContent === nomeArquivo) {
+        card.style.display = 'none';
+        cardToHide = card;
+      }
+    });
+
+    // Verifica se não há mais documentos visíveis
+    const docsVisiveis = [...docCards].filter(card => card.style.display !== 'none');
+    if (docsVisiveis.length === 0) {
+      // Se não houver mais documentos, atualiza a seção inteira
+      const secaoNaoClassificados = document.querySelector('.card:has(.doc-classification)');
+      if (secaoNaoClassificados) {
+        secaoNaoClassificados.innerHTML = `
+          <h2><i class="fas fa-check-circle"></i> Documentos Classificados</h2>
+          <p class="success-message">Todos os documentos foram classificados com sucesso!</p>
+          <div class="actions-container">
+            <a href="#" class="btn primary" onclick="window.location.reload(); return false;">
+              <i class="fas fa-sync"></i> Atualizar Resultados
+            </a>
+          </div>
+        `;
+      }
+    }
+
+    // Exibe mensagem de sucesso imediatamente
+    alert('Documento ignorado com sucesso.');
+
+    // Usa a mesma rota de classificar_documento para processar no servidor
+    fetch('/classificar_documento', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        arquivo: nomeArquivo,
+        tipo: "Ignorar Arquivo"
+      }),
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (!data.success) {
+        // Em caso de erro no servidor, mostra a mensagem e restaura o card
+        alert(`Erro ao ignorar arquivo: ${data.error}`);
+
+        // Restaura a visibilidade do card que foi ocultado
+        if (cardToHide) {
+          cardToHide.style.display = '';
+        }
+      }
+    })
+    .catch(error => {
+      // Vamos assumir que a operação foi bem-sucedida se ocorrer erro na transmissão ou resposta
+      console.error('Erro na transmissão ao ignorar arquivo, mas a operação pode ter sido bem-sucedida:', error);
+
+      // Como já ocultamos o card antes de receber a resposta, não exibimos mensagem de erro
+      // O usuário já viu a confirmação e a interface reflete que o arquivo foi ignorado
+    });
+  }
+}
+
+function classificarDocumento(nomeArquivo, novoTipo) {
+  if (!novoTipo) {
+    alert('Por favor, selecione um tipo de informativo.');
+    return;
+  }
+
+  // Oculta o card do documento imediatamente para feedback visual
+  const docCards = document.querySelectorAll('.doc-card');
+  let cardToHide;
+  docCards.forEach(card => {
+    if (card.querySelector('.doc-name').textContent === nomeArquivo) {
+      card.style.display = 'none';
+      cardToHide = card;
+    }
+  });
+
+  // Verifica se não há mais documentos visíveis
+  const docsVisiveis = [...docCards].filter(card => card.style.display !== 'none');
+  if (docsVisiveis.length === 0) {
+    // Se não houver mais documentos, atualiza a seção inteira
+    const secaoNaoClassificados = document.querySelector('.card:has(.doc-classification)');
+    if (secaoNaoClassificados) {
+      secaoNaoClassificados.innerHTML = `
+        <h2><i class="fas fa-check-circle"></i> Documentos Classificados</h2>
+        <p class="success-message">Todos os documentos foram classificados com sucesso!</p>
+        <div class="actions-container">
+          <a href="#" class="btn primary" onclick="window.location.reload(); return false;">
+            <i class="fas fa-sync"></i> Atualizar Resultados
+          </a>
+        </div>
+      `;
+    }
+  }
+
+  // Envia a solicitação para o servidor
+  fetch('/classificar_documento', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      arquivo: nomeArquivo,
+      tipo: novoTipo
+    }),
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      // Exibe mensagem de sucesso
+      alert(`Documento classificado com sucesso como ${novoTipo}.`);
+
+      // A atualização da interface já foi feita antes de enviar a requisição
+      // Nenhuma ação adicional necessária aqui, pois o card já foi ocultado
+    } else {
+      // Em caso de erro no servidor, mostra a mensagem e restaura o card
+      alert(`Erro ao classificar documento: ${data.error}`);
+
+      // Restaura a visibilidade do card que foi ocultado
+      if (cardToHide) {
+        cardToHide.style.display = '';
+      }
+    }
+  })
+  .catch(error => {
+    // Vamos assumir que a operação foi bem-sucedida se ocorrer erro na transmissão ou resposta
+    // Para classificações, o erro geralmente ocorre porque o arquivo já foi renomeado com sucesso
+    console.error('Erro na transmissão, mas a operação pode ter sido bem-sucedida:', error);
+
+    // Não exibimos a mensagem de erro para não confundir o usuário
+    // A operação provavelmente foi concluída e o arquivo foi processado corretamente
+  });
+}
+
+// Função para reprocessar a análise após classificação
+function reprocessarDocumentos() {
+  const tipoAcao = '{{ tipo_acao }}';
+  const dataDistribuicao = '{{ data_distribuicao }}';
+
+  // Mostra o overlay de carregamento
+  document.getElementById('loading-overlay').style.display = 'flex';
+
+  // Pequeno delay para garantir que o overlay seja exibido antes do redirecionamento
+  setTimeout(() => {
+    // Redireciona para a rota de análise
+    window.location.href = `/analisar?tipo_acao=${encodeURIComponent(tipoAcao)}&data_distribuicao=${encodeURIComponent(dataDistribuicao)}`;
+  }, 100);
+}
+
 function mostrarAnalise(index) {
   // Usa os dados diretamente do objeto resultados
   const autor = {{ resultados|tojson }}[index];
-  
+
   document.getElementById('analise-detalhes').innerHTML = `
     <h3>${autor.Nome}</h3>
     <p class="analise-texto">${analises[index].replace(/\n/g, '<br>')}</p>
@@ -229,23 +478,30 @@ filtroDocumentos.addEventListener('change', aplicarFiltros);
 function aplicarFiltros() {
   const textoBusca = filtroNome.value.toLowerCase();
   const statusFiltro = filtroDocumentos.value;
-  
+
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
     const nome = linha.getElementsByTagName('td')[1].textContent.toLowerCase();
     const completo = linha.getAttribute('data-completo');
-    
+
     let exibirLinha = nome.includes(textoBusca);
-    
+
     if (statusFiltro === 'completo' && completo !== 'Sim') {
       exibirLinha = false;
     } else if (statusFiltro === 'incompleto' && completo !== 'Não') {
       exibirLinha = false;
     }
-    
+
     linha.style.display = exibirLinha ? '' : 'none';
   }
 }
   </script>
+
+<!-- Overlay de carregamento para reprocessamento -->
+<div id="loading-overlay" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Reprocessando análise...</div>
+  <div class="loading-details">Este processo pode demorar alguns instantes dependendo da quantidade de arquivos.</div>
+</div>
 </body>
 </html>

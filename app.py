@@ -36,9 +36,35 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULTS_FOLDER, exist_ok=True)
 
 # Tipos de documentos disponíveis
-TIPOS = ['Inicial', 'Informativo CAF', 'Informativo SPPREV', 'Informativo Extratão', 'Litispendência']
+TIPOS = ['Inicial', 'Informativos', 'Litispendência']
 
 # --- Funções auxiliares ---
+
+def classificar_informativo(texto):
+    """
+    Analisa o conteúdo do texto do PDF e identifica o tipo de informativo
+    Retorna: 'Informativo Extratão', 'Informativo SPPREV', 'Informativo CAF' ou None se não identificado
+    """
+    # Critérios para Informativo Extratão
+    criterios_extratao = ["OR / UO / UD", "Início de Provimento", "folhadepagamento.sp.gov.br"]
+    for criterio in criterios_extratao:
+        if criterio in texto:
+            return "Informativo Extratão"
+
+    # Critérios para Informativo SPPREV - removido SPPREV para evitar falsos positivos
+    criterios_spprev = ["Benefício", "Composição", "spprev.sp.gov.br"]
+    for criterio in criterios_spprev:
+        if criterio in texto:
+            return "Informativo SPPREV"
+
+    # Critérios para Informativo CAF
+    criterios_caf = ["Processo SF", "Período Abrangente"]
+    for criterio in criterios_caf:
+        if criterio in texto:
+            return "Informativo CAF"
+
+    # Se nenhum critério foi atendido, retorna None
+    return None
 
 def normalizar_nome(nome):
     nome = nome.upper()
@@ -285,6 +311,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
     extratao_encontrados = []
     caf_encontrados = []
     spprev_encontrados = []
+    nao_classificados = []
 
     for arquivo in arquivos:
         caminho = os.path.join(pasta, arquivo)
@@ -295,8 +322,9 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
         tipo, nome_original = arquivo.split('__', 1)
         tipo = tipo.replace("_", " ")
         caminho_para_processar = caminho
+
         # Se não for Inicial ou Litispendência, recorta as 2 primeiras páginas para agilizar
-        if tipo not in ['Inicial', 'Litispendência']:
+        if tipo not in ['Inicial', 'Litispendência', 'Nao Classificado']:
             print(f"Cortando as 2 primeiras páginas de: {nome_original}")
             caminho_temporario = os.path.join(pasta, f"_recorte_{nome_original}")
             cortar_pdf(caminho, caminho_temporario)
@@ -325,6 +353,14 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                 dado["arquivo"] = nome_original
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
                 spprev_encontrados.append(dado)
+        elif tipo == 'Nao Classificado':
+            # Armazena dados de arquivos não classificados para exibir na interface
+            nao_classificados.append({
+                "arquivo": nome_original,
+                "arquivo_completo": arquivo,  # Nome completo com prefixo
+                "caminho": caminho,
+                "paginas": extrair_paginas_arquivo(nome_original)
+            })
 
     # Cria DataFrame base com dados da Inicial
     if not dados_inicial:
@@ -450,61 +486,169 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                 'Cpf': row['Cpf'],
                 'Rg': row['Rg'],
                 'caf': row['Informativo CAF'],
-                'spprev': row['Informativo SPPREV'], 
+                'spprev': row['Informativo SPPREV'],
                 'extratao': row['Informativo Extratão']
             }
             return analisar_com_chatgpt(dados_para_analise, tipo_acao, data_distribuicao)
-        
+
         df['Análise'] = df.apply(analisar_com_dados_especificos, axis=1)
     else:
         df['Análise'] = 'Configure a chave de API do OpenAI no arquivo .env para habilitar a análise automática.'
-    
-    return df.to_dict(orient='records')
+
+    # Retorna tanto os resultados da análise quanto os documentos não classificados
+    resultados = {
+        'autores': df.to_dict(orient='records'),
+        'nao_classificados': nao_classificados
+    }
+
+    return resultados
 
 @app.route('/')
 def index():
     arquivos = os.listdir(app.config['UPLOAD_FOLDER']) if os.path.exists(app.config['UPLOAD_FOLDER']) else []
     tipos_encontrados = [arq.split('__', 1)[0].replace("_", " ") for arq in arquivos if '__' in arq]
-    pode_analisar = 'Inicial' in tipos_encontrados and any(t in tipos_encontrados for t in ['Informativo Extratão', 'Informativo CAF', 'Informativo SPPREV'])
+    # Atualizado para considerar que os informativos podem ser classificados automaticamente
+    pode_analisar = 'Inicial' in tipos_encontrados and any(t in tipos_encontrados for t in
+                                                           ['Informativo Extratão',
+                                                            'Informativo CAF',
+                                                            'Informativo SPPREV',
+                                                            'Nao Classificado'])
     return render_template('index.html', tipos=TIPOS, pode_analisar=pode_analisar, arquivos=arquivos)
 
 @app.route('/upload', methods=['POST'])
 def upload():
+    # Retorna erro se nenhum arquivo foi enviado
+    if 'pdfs' not in request.files:
+        return render_template('erro.html', mensagem="Nenhum arquivo foi enviado. Por favor, selecione arquivos para enviar.")
+
     arquivos = request.files.getlist('pdfs')
     tipo = request.form.get('tipo')
+
+    # Verifica se arquivos foram realmente enviados
+    if not arquivos or arquivos[0].filename == '':
+        return render_template('erro.html', mensagem="Nenhum arquivo foi selecionado. Por favor, selecione arquivos para enviar.")
+
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    arquivos_processados = 0
+
     for arquivo in arquivos:
-        if arquivo and tipo:
-            tipo_limpo = tipo.replace(" ", "_")
+        if arquivo and tipo and arquivo.filename:
             nome_seguro = secure_filename(arquivo.filename)
-            nome_final = f"{tipo_limpo}__{nome_seguro}"
-            caminho = os.path.join(app.config['UPLOAD_FOLDER'], nome_final)
-            arquivo.save(caminho)
+
+            # Skip empty filenames
+            if not nome_seguro:
+                continue
+
+            # Se for tipo "Informativos", tenta classificar automaticamente
+            if tipo == "Informativos":
+                try:
+                    # Primeiro salva o arquivo com um prefixo temporário
+                    nome_temp = f"temp__{nome_seguro}"
+                    caminho_temp = os.path.join(app.config['UPLOAD_FOLDER'], nome_temp)
+                    arquivo.save(caminho_temp)
+
+                    # Corta o PDF para análise mais rápida
+                    caminho_recorte = os.path.join(app.config['UPLOAD_FOLDER'], f"_recorte_{nome_seguro}")
+                    cortar_pdf(caminho_temp, caminho_recorte)
+
+                    # Extrai o texto e classifica
+                    texto = extrair_texto(caminho_recorte)
+                    tipo_classificado = classificar_informativo(texto)
+
+                    # Se conseguiu classificar, salva com o tipo correto
+                    if tipo_classificado:
+                        tipo_limpo = tipo_classificado.replace(" ", "_")
+                        nome_final = f"{tipo_limpo}__{nome_seguro}"
+                        caminho_final = os.path.join(app.config['UPLOAD_FOLDER'], nome_final)
+                        os.rename(caminho_temp, caminho_final)
+                        arquivos_processados += 1
+
+                        # Remove o recorte temporário após classificação
+                        if os.path.exists(caminho_recorte):
+                            os.remove(caminho_recorte)
+                    else:
+                        # Se não conseguiu classificar, mantém como "Não_Classificado"
+                        nome_final = f"Nao_Classificado__{nome_seguro}"
+                        caminho_final = os.path.join(app.config['UPLOAD_FOLDER'], nome_final)
+                        os.rename(caminho_temp, caminho_final)
+                        arquivos_processados += 1
+
+                        # Remove o recorte temporário após tentativa de classificação
+                        if os.path.exists(caminho_recorte):
+                            os.remove(caminho_recorte)
+                except Exception as e:
+                    print(f"Erro ao processar arquivo {nome_seguro}: {e}")
+                    # Se ocorrer erro, tenta salvar o arquivo diretamente
+                    try:
+                        tipo_limpo = "Nao_Classificado"
+                        nome_final = f"{tipo_limpo}__{nome_seguro}"
+                        caminho_final = os.path.join(app.config['UPLOAD_FOLDER'], nome_final)
+                        arquivo.save(caminho_final)
+                        arquivos_processados += 1
+                    except Exception as e2:
+                        print(f"Erro ao salvar arquivo {nome_seguro} após falha: {e2}")
+            else:
+                # Para os outros tipos, usa o comportamento original
+                try:
+                    tipo_limpo = tipo.replace(" ", "_")
+                    nome_final = f"{tipo_limpo}__{nome_seguro}"
+                    caminho = os.path.join(app.config['UPLOAD_FOLDER'], nome_final)
+                    arquivo.save(caminho)
+                    arquivos_processados += 1
+                except Exception as e:
+                    print(f"Erro ao salvar arquivo {nome_seguro}: {e}")
+
+    if arquivos_processados == 0:
+        return render_template('erro.html', mensagem="Nenhum arquivo pôde ser processado. Verifique se os arquivos são PDFs válidos.")
+
     return redirect(url_for('index'))
 
 @app.route('/analisar')
 def analisar():
     tipo_acao = request.args.get('tipo_acao', '')
     data_distribuicao = request.args.get('data_distribuicao', '')
-    
+
     resultados = processar_arquivos(tipo_acao, data_distribuicao)
-    if not resultados:
+
+    # Se não tivermos dados de autores, retornamos uma mensagem de erro
+    if not resultados or not resultados.get('autores'):
         return render_template('erro.html', mensagem="Nenhum autor encontrado na Petição Inicial. Verifique se o documento foi carregado corretamente.")
-    
-    # Salva os resultados em um arquivo Excel
+
+    # Salva os resultados em um arquivo Excel (apenas os dados dos autores)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     nome_arquivo = f"analise_processos_{timestamp}.xlsx"
     caminho_excel = os.path.join(app.config['RESULTS_FOLDER'], nome_arquivo)
-    
+
     # Converte para DataFrame e salva
-    df = pd.DataFrame(resultados)
+    df = pd.DataFrame(resultados['autores'])
     df.to_excel(caminho_excel, index=False)
-    
-    return render_template('resultado.html', resultados=resultados, arquivo_excel=nome_arquivo, tipo_acao=tipo_acao, data_distribuicao=data_distribuicao)
+
+    # Passa apenas os dados dos autores e os documentos não classificados para o template
+    return render_template('resultado.html',
+                          resultados=resultados['autores'],
+                          nao_classificados=resultados.get('nao_classificados', []),
+                          arquivo_excel=nome_arquivo,
+                          tipo_acao=tipo_acao,
+                          data_distribuicao=data_distribuicao)
 
 @app.route('/baixar_excel/<filename>')
 def baixar_excel(filename):
     return send_file(os.path.join(app.config['RESULTS_FOLDER'], filename), as_attachment=True)
+
+@app.route('/visualizar_pdf/<filename>')
+def visualizar_pdf(filename):
+    """
+    Endpoint para visualizar um arquivo PDF diretamente no navegador.
+    """
+    # Agora recebemos o nome completo do arquivo (com o prefixo)
+    pasta = app.config['UPLOAD_FOLDER']
+    caminho = os.path.join(pasta, filename)
+
+    try:
+        return send_file(caminho, mimetype='application/pdf')
+    except FileNotFoundError:
+        # Se o arquivo não for encontrado, retorna um erro 404
+        return f"Arquivo PDF não encontrado: {filename}", 404
 
 @app.route('/limpar_uploads', methods=['POST'])
 def limpar_uploads():
@@ -515,6 +659,57 @@ def limpar_uploads():
             if os.path.isfile(caminho):
                 os.remove(caminho)
     return redirect(url_for('index'))
+
+@app.route('/classificar_documento', methods=['POST'])
+def classificar_documento():
+    """
+    Reclassifica um documento não classificado para um tipo específico.
+    """
+    dados = request.json
+    arquivo = dados.get('arquivo')
+    novo_tipo = dados.get('tipo')
+
+    if not arquivo or not novo_tipo:
+        return jsonify({'success': False, 'error': 'Arquivo ou tipo não fornecido'})
+
+    try:
+        # Encontra o arquivo não classificado
+        pasta = app.config['UPLOAD_FOLDER']
+        caminho_atual = os.path.join(pasta, f"Nao_Classificado__{arquivo}")
+
+        # Verifica se o arquivo existe
+        if not os.path.exists(caminho_atual):
+            return jsonify({'success': False, 'error': 'Arquivo não encontrado'})
+
+        # Caso especial: Se for para ignorar o arquivo, exclui-o
+        if novo_tipo == "Ignorar Arquivo":
+            try:
+                # Remove o arquivo do sistema
+                os.remove(caminho_atual)
+
+                # Limpa quaisquer arquivos de recorte relacionados também
+                recorte_path = os.path.join(pasta, f"_recorte_{arquivo}")
+                if os.path.exists(recorte_path):
+                    os.remove(recorte_path)
+
+                return jsonify({'success': True, 'ignored': True})
+            except Exception as e:
+                print(f"Erro ao remover arquivo: {e}")
+                # Retorna sucesso mesmo se ocorrer erro, pois queremos que o arquivo seja ignorado de qualquer forma
+                return jsonify({'success': True, 'ignored': True})
+
+        # Caso normal: reclassifica o arquivo
+        tipo_limpo = novo_tipo.replace(" ", "_")
+        novo_nome = f"{tipo_limpo}__{arquivo}"
+        caminho_novo = os.path.join(pasta, novo_nome)
+
+        # Renomeia o arquivo
+        os.rename(caminho_atual, caminho_novo)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        print(f"Erro ao classificar documento: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -21,14 +21,14 @@
         <div class="form-group">
           <label for="tipo">1. Selecione o tipo de documento:</label>
           <select name="tipo" id="tipo" required>
-            {% for tipo in tipos %}
-            <option value="{{ tipo }}">{{ tipo }}</option>
-            {% endfor %}
+            <option value="Inicial">Inicial</option>
+            <option value="Litispendência">Litispendência</option>
+            <option value="Informativos">Informativos</option>
           </select>
         </div>
 
         <div class="form-group drop-area" id="drop-area">
-          <input type="file" name="pdfs" id="file-input" multiple required hidden>
+          <input type="file" name="pdfs" id="file-input" multiple accept=".pdf" required hidden>
           <label for="file-input" class="file-label">
             <i class="fas fa-cloud-upload-alt"></i>
             <span>2. Arraste arquivos aqui ou clique para selecionar</span>
@@ -225,11 +225,34 @@
   // Adicione este JavaScript ao final do arquivo index.html
   document.addEventListener('DOMContentLoaded', function() {
     const analisarForm = document.querySelector('form[action="/analisar"]');
+    const uploadForm = document.querySelector('form[action="/upload"]');
     const loadingOverlay = document.getElementById('loading-overlay');
-    
+
+    // Adiciona evento para o formulário de análise
     if (analisarForm) {
       analisarForm.addEventListener('submit', function() {
+        loadingOverlay.querySelector('.loading-text').textContent = 'Analisando documentos...';
+        loadingOverlay.querySelector('.loading-details').textContent = 'Este processo pode demorar alguns instantes dependendo da quantidade de arquivos.';
         loadingOverlay.style.display = 'flex';
+      });
+    }
+
+    // Adiciona evento para o formulário de upload
+    if (uploadForm) {
+      uploadForm.addEventListener('submit', function(e) {
+        // Verifica se algum arquivo foi selecionado
+        const fileInput = document.getElementById('file-input');
+        if (fileInput.files.length === 0) {
+          e.preventDefault(); // Impede o envio do formulário
+          alert('Por favor, selecione pelo menos um arquivo para enviar.');
+          return false;
+        }
+
+        // Exibe a tela de carregamento com mensagem específica para upload
+        loadingOverlay.querySelector('.loading-text').textContent = 'Enviando arquivos...';
+        loadingOverlay.querySelector('.loading-details').textContent = 'Este processo pode demorar alguns instantes dependendo do tamanho dos arquivos.';
+        loadingOverlay.style.display = 'flex';
+        return true;
       });
     }
   });

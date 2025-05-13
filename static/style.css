@@ -629,6 +629,110 @@ form[action="/limpar_uploads"] {
   max-width: 80%;
   text-align: center;
 }
+
+/* Componentes para documentos não classificados */
+.alert-message {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border-left: 4px solid #ffc107;
+}
+
+.success-message {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  border-left: 4px solid #28a745;
+}
+
+.doc-classification {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.doc-card {
+  display: flex;
+  background-color: var(--light);
+  border-radius: 8px;
+  padding: 15px;
+  align-items: center;
+  box-shadow: 0 2px 5px var(--shadow);
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.doc-info {
+  flex: 2;
+  min-width: 200px;
+}
+
+.doc-name {
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.doc-pages {
+  font-size: 13px;
+  color: var(--gray);
+}
+
+.doc-preview {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-preview, .btn-ignore {
+  flex: 1;
+  max-width: 120px;
+  white-space: nowrap;
+}
+
+.doc-actions {
+  flex: 2;
+  min-width: 250px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.doc-type-select {
+  flex: 1;
+}
+
+.btn-classify {
+  white-space: nowrap;
+}
+
+.actions-container {
+  margin-top: 25px;
+  text-align: center;
+}
+
+/* Modal para visualização de PDF */
+.pdf-modal-content {
+  width: 90%;
+  max-width: 1000px;
+  height: 90vh;
+  max-height: 800px;
+}
+
+.pdf-frame {
+  width: 100%;
+  height: calc(100% - 60px);
+  border: none;
+  margin-top: 20px;
+  border-radius: 6px;
+  background-color: var(--light);
+}
 .select-full,
 .input-full {
   width: 100%;
