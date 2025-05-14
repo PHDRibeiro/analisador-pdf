@@ -52,7 +52,7 @@ def classificar_informativo(texto):
             return "Informativo Extratão"
 
     # Critérios para Informativo SPPREV - removido SPPREV para evitar falsos positivos
-    criterios_spprev = ["Benefício", "Composição", "spprev.sp.gov.br"]
+    criterios_spprev = ["Benefício", "BENEFÍCIO", "Composição", "spprev.sp.gov.br"]
     for criterio in criterios_spprev:
         if criterio in texto:
             return "Informativo SPPREV"
@@ -340,18 +340,24 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
             for dado in extratos:
                 dado["arquivo"] = nome_original
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
+                dado["tipo"] = "Extratão"
+                dado["encontrado_match"] = False  # Será atualizado durante o cruzamento
                 extratao_encontrados.append(dado)
         elif tipo == 'Informativo CAF':
             registros = parse_caf(texto)
             for dado in registros:
                 dado["arquivo"] = nome_original
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
+                dado["tipo"] = "CAF"
+                dado["encontrado_match"] = False  # Será atualizado durante o cruzamento
                 caf_encontrados.append(dado)
         elif tipo == 'Informativo SPPREV':
             registros = parse_spprev(texto)
             for dado in registros:
                 dado["arquivo"] = nome_original
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
+                dado["tipo"] = "SPPREV"
+                dado["encontrado_match"] = False  # Será atualizado durante o cruzamento
                 spprev_encontrados.append(dado)
         elif tipo == 'Nao Classificado':
             # Armazena dados de arquivos não classificados para exibir na interface
@@ -365,7 +371,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
     # Cria DataFrame base com dados da Inicial
     if not dados_inicial:
         return []
-        
+
     df = pd.DataFrame(dados_inicial)
     df.insert(0, 'ID', range(1, len(df) + 1))
 
@@ -376,11 +382,12 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
     # Cruzamento com Extratão (por CPF)
     for idx, row in df.iterrows():
         cpf_df = str(row['cpf']).replace('.', '').replace('-', '').strip()
-        for registro in extratao_encontrados:
+        for i, registro in enumerate(extratao_encontrados):
             cpf_extra = str(registro['cpf']).replace('.', '').replace('-', '').strip()
             if cpf_df == cpf_extra:
                 df.at[idx, 'Informativo Extratão'] = 'Sim'
                 df.at[idx, 'Página Extratão'] = registro.get('paginas', '')
+                extratao_encontrados[i]['encontrado_match'] = True
                 break
 
     # Cruzamento com CAF por RG (com tolerância) ou, em último caso, por nome
@@ -390,7 +397,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
 
         encontrou = False
 
-        for registro in caf_encontrados:
+        for i, registro in enumerate(caf_encontrados):
             rg_caf = str(registro['rg']).replace('.', '').replace('-', '').upper().lstrip('0')
             print(f"Comparando RGs → Inicial: {rg_df} | CAF: {rg_caf}")
 
@@ -401,39 +408,42 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
             ):
                 df.at[idx, 'Informativo CAF'] = 'Sim'
                 df.at[idx, 'Página CAF'] = registro.get('paginas', '')
+                caf_encontrados[i]['encontrado_match'] = True
                 encontrou = True
                 break
 
         if not encontrou:
-            for registro in caf_encontrados:
+            for i, registro in enumerate(caf_encontrados):
                 nome_caf = normalizar_nome(registro.get('nome', ''))
                 print(f"Cruzando por nome: {nome_df} vs {nome_caf}")
 
                 if nome_df in nome_caf or nome_caf in nome_df:
                     df.at[idx, 'Informativo CAF'] = 'Sim'
                     df.at[idx, 'Página CAF'] = registro.get('paginas', '')
+                    caf_encontrados[i]['encontrado_match'] = True
                     break
-    
+
     # Cruzamento com SPPREV (por CPF, RG ou nome)
     for idx, row in df.iterrows():
         cpf_df = str(row.get('cpf', '')).replace('.', '').replace('-', '').strip()
         rg_df = str(row.get('rg', '')).replace('.', '').replace('-', '').upper().lstrip('0')
         nome_df = normalizar_nome(row.get('nome', ''))
-        
+
         encontrou = False
-        
+
         # Primeiro tenta por CPF
-        for registro in spprev_encontrados:
+        for i, registro in enumerate(spprev_encontrados):
             cpf_spprev = str(registro.get('cpf', '')).replace('.', '').replace('-', '').strip()
             if cpf_df and cpf_spprev and cpf_df == cpf_spprev:
                 df.at[idx, 'Informativo SPPREV'] = 'Sim'
                 df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
+                spprev_encontrados[i]['encontrado_match'] = True
                 encontrou = True
                 break
-        
+
         # Se não encontrou por CPF, tenta por RG
         if not encontrou:
-            for registro in spprev_encontrados:
+            for i, registro in enumerate(spprev_encontrados):
                 rg_spprev = str(registro.get('rg', '')).replace('.', '').replace('-', '').upper().lstrip('0')
                 if rg_df and rg_spprev and (
                     rg_df[:6] == rg_spprev[:6] or
@@ -442,16 +452,18 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                 ):
                     df.at[idx, 'Informativo SPPREV'] = 'Sim'
                     df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
+                    spprev_encontrados[i]['encontrado_match'] = True
                     encontrou = True
                     break
-        
+
         # Se ainda não encontrou, tenta por nome
         if not encontrou:
-            for registro in spprev_encontrados:
+            for i, registro in enumerate(spprev_encontrados):
                 nome_spprev = normalizar_nome(registro.get('nome', ''))
                 if nome_df and nome_spprev and (nome_df in nome_spprev or nome_spprev in nome_df):
                     df.at[idx, 'Informativo SPPREV'] = 'Sim'
                     df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
+                    spprev_encontrados[i]['encontrado_match'] = True
                     break
 
     # Define nomes de colunas padronizados, preservando os nomes específicos para os informativos
@@ -463,19 +475,19 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
         else:
             # Capitaliza as demais colunas
             colunas_padronizadas.append(col.capitalize())
-            
+
     df.columns = colunas_padronizadas
-    
+
     # Adiciona as informações do tipo de ação
     df['Tipo Acao'] = tipo_acao
     if data_distribuicao:
         df['Data Distribuicao'] = data_distribuicao
-    
+
     # Para debug - imprime os nomes das colunas após a padronização
     print("DEBUG - Nomes das colunas após padronização:")
     for col in df.columns:
         print(f"  {col}")
-    
+
     # Adiciona coluna de análise usando a API do OpenAI
     if 'OPENAI_API_KEY' in os.environ and os.environ['OPENAI_API_KEY']:
         # Passamos os valores específicos para a função analisar_com_chatgpt
@@ -495,10 +507,35 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
     else:
         df['Análise'] = 'Configure a chave de API do OpenAI no arquivo .env para habilitar a análise automática.'
 
+    # Combina todos os informativos em uma única lista para exibição na tabela de detalhes
+    todos_informativos = []
+    todos_informativos.extend(extratao_encontrados)
+    todos_informativos.extend(caf_encontrados)
+    todos_informativos.extend(spprev_encontrados)
+
+    # Normaliza os nomes das chaves para melhor exibição
+    for info in todos_informativos:
+        # Garante que todos tenham campos nome e cpf
+        if 'nome' not in info and 'nome' not in info:
+            info['nome'] = info.get('nome', "NÃO ENCONTRADO")
+
+        # Normaliza as keys
+        if 'rg' in info:
+            info['RG'] = info['rg']
+        if 'cpf' in info:
+            info['CPF'] = info['cpf']
+        if 'nome' in info:
+            info['Nome'] = info['nome']
+        if 'beneficio' in info:
+            info['Benefício'] = info['beneficio']
+        if 'matricula' in info:
+            info['Matrícula'] = info['matricula']
+
     # Retorna tanto os resultados da análise quanto os documentos não classificados
     resultados = {
         'autores': df.to_dict(orient='records'),
-        'nao_classificados': nao_classificados
+        'nao_classificados': nao_classificados,
+        'informativos': todos_informativos
     }
 
     return resultados
@@ -623,10 +660,11 @@ def analisar():
     df = pd.DataFrame(resultados['autores'])
     df.to_excel(caminho_excel, index=False)
 
-    # Passa apenas os dados dos autores e os documentos não classificados para o template
+    # Passa os dados dos autores, documentos não classificados e informativos para o template
     return render_template('resultado.html',
                           resultados=resultados['autores'],
                           nao_classificados=resultados.get('nao_classificados', []),
+                          informativos=resultados.get('informativos', []),
                           arquivo_excel=nome_arquivo,
                           tipo_acao=tipo_acao,
                           data_distribuicao=data_distribuicao)

@@ -765,3 +765,55 @@ form[action="/limpar_uploads"] {
 #form-analise .btn {
   margin-top: 10px;
 }
+
+/* Estilos para a seção colapsável de informativos */
+.collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 5px 0;
+}
+
+.collapsible-header h2 {
+  margin-bottom: 0;
+}
+
+.toggle-icon {
+  transition: transform 0.3s ease;
+}
+
+.toggle-icon.open {
+  transform: rotate(180deg);
+}
+
+.collapsible-content {
+  transition: all 0.3s ease-out;
+  margin-top: 15px;
+}
+
+.collapsible-content.open {
+  transition: all 0.5s ease-in;
+}
+
+.tipo-informativo {
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.tipo-extratão, .tipo-extratao {
+  background-color: rgba(52, 152, 219, 0.1);
+  color: #3498db;
+}
+
+.tipo-caf {
+  background-color: rgba(241, 196, 15, 0.1);
+  color: #f39c12;
+}
+
+.tipo-spprev {
+  background-color: rgba(46, 204, 113, 0.1);
+  color: #27ae60;
+}
