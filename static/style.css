@@ -835,3 +835,20 @@ form[action="/limpar_uploads"] {
 .text-center {
   text-align: center !important;
 }
+
+/* Estilo para o dropdown de vincular informativo */
+.vincular-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.autor-select {
+  font-size: 0.85em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid #ccc;
+  background-color: #f8f9fa;
+  width: 100%;
+  max-width: 200px;
+}

@@ -163,7 +163,7 @@
               <!-- CAF -->
               <td class="{{ 'status-sim' if row['Informativo CAF'] == 'Sim' else 'status-nao' }}">
                 {{ row['Informativo CAF'] }}
-                {% if row['Página CAF'] %}
+                {% if row['Informativo CAF'] == 'Sim' and row['Página CAF'] and row['Página CAF'] != 'nan' and row['Página CAF'] != 'null' and row['Página CAF'] != '' %}
                 <span class="pagina-ref">Pág. {{ row['Página CAF'] }}</span>
                 {% endif %}
               </td>
@@ -171,7 +171,7 @@
               <!-- SPPREV -->
               <td class="{{ 'status-sim' if row['Informativo SPPREV'] == 'Sim' else 'status-nao' }}">
                 {{ row['Informativo SPPREV'] }}
-                {% if row['Página SPPREV'] %}
+                {% if row['Informativo SPPREV'] == 'Sim' and row['Página SPPREV'] and row['Página SPPREV'] != 'nan' and row['Página SPPREV'] != 'null' and row['Página SPPREV'] != '' %}
                 <span class="pagina-ref">Pág. {{ row['Página SPPREV'] }}</span>
                 {% endif %}
               </td>
@@ -179,7 +179,7 @@
               <!-- Extratão -->
               <td class="{{ 'status-sim' if row['Informativo Extratão'] == 'Sim' else 'status-nao' }}">
                 {{ row['Informativo Extratão'] }}
-                {% if row['Página Extratão'] %}
+                {% if row['Informativo Extratão'] == 'Sim' and row['Página Extratão'] and row['Página Extratão'] != 'nan' and row['Página Extratão'] != 'null' and row['Página Extratão'] != '' %}
                 <span class="pagina-ref">Pág. {{ row['Página Extratão'] }}</span>
                 {% endif %}
               </td>
@@ -263,7 +263,18 @@
                   {% if info.get('encontrado_match', False) %}
                     <i class="fas fa-check-circle"></i> Cruzado
                   {% else %}
-                    <i class="fas fa-times-circle"></i> Não cruzado
+                    <div class="vincular-container">
+                      <i class="fas fa-times-circle"></i> Não cruzado
+                      <select class="autor-select" onchange="console.log('Arquivo:', '{{ info.get('arquivo_completo', '') }}', 'ID:', this.value, 'Tipo:', '{{ info.get('tipo', '') }}'); vincularInformativo('{{ info.get('arquivo_completo', '') }}', this.value, '{{ info.get('tipo', '') }}')">
+                        <option value="">Vincular a autor...</option>
+                        {% for autor in resultados %}
+                          {% set autor_id = autor.get('ID', autor.get('Id', autor.get('id', ''))) %}
+                          {% if autor_id %}
+                          <option value="{{ autor_id }}">ID {{ autor_id }}: {{ autor.get('Nome', autor.get('nome', 'Autor desconhecido')) }}</option>
+                          {% endif %}
+                        {% endfor %}
+                      </select>
+                    </div>
                   {% endif %}
                 </td>
               </tr>
@@ -289,6 +300,59 @@
   </footer>
 
   <script>
+// Função para vincular informativo a um autor específico
+function vincularInformativo(arquivoCompleto, autorId, tipoInformativo) {
+  if (!autorId) return; // Se nenhum autor for selecionado, não faz nada
+  
+  // Confirma a ação com o usuário
+  if (confirm(`Deseja vincular este informativo ao autor ID ${autorId}?`)) {
+    // Mostra o overlay de carregamento com uma mensagem específica
+    const overlay = document.getElementById('loading-overlay');
+    overlay.style.display = 'flex';
+    
+    const loadingText = document.querySelector('.loading-text');
+    loadingText.textContent = 'Vinculando informativo...';
+    
+    const loadingDetails = document.querySelector('.loading-details');
+    if (loadingDetails) {
+      loadingDetails.textContent = `Conectando o informativo do tipo "${tipoInformativo}" ao autor ID ${autorId}. Por favor, aguarde...`;
+    }
+    
+    // Envia a solicitação para o servidor
+    fetch('/vincular_informativo', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        arquivo: arquivoCompleto,
+        autor_id: autorId,
+        tipo_informativo: tipoInformativo
+      }),
+    })
+    .then(response => response.json())
+    .then(data => {      
+      if (data.success) {
+        // Não mostra alerta, apenas redireciona com o overlay ainda ativo
+        if (data.redirect) {
+          window.location.href = data.redirect;
+        } else {
+          window.location.reload();
+        }
+      } else {
+        // Apenas em caso de erro esconde o overlay e mostra o alerta
+        document.getElementById('loading-overlay').style.display = 'none';
+        alert(`Erro ao vincular informativo: ${data.error}`);
+      }
+    })
+    .catch(error => {
+      // Oculta o overlay de carregamento
+      document.getElementById('loading-overlay').style.display = 'none';
+      alert(`Erro na operação: ${error}`);
+    });
+  }
+}
+
 // Armazena as análises para acesso rápido
 const analises = [
   {% for row in resultados %}
@@ -515,17 +579,20 @@ function mostrarAnalise(index) {
       <div class="doc-item ${autor['Informativo CAF'] === 'Sim' ? 'doc-presente' : 'doc-ausente'}">
         <i class="fas ${autor['Informativo CAF'] === 'Sim' ? 'fa-check-circle' : 'fa-times-circle'}"></i>
         <span>Informativo CAF</span>
-        ${autor['Página CAF'] ? `<div class="pagina-info">Pág. ${autor['Página CAF']}</div>` : ''}
+        ${(autor['Informativo CAF'] === 'Sim' && autor['Página CAF'] && autor['Página CAF'] !== 'nan' && autor['Página CAF'] !== 'null' && autor['Página CAF'] !== '') ? 
+          `<div class="pagina-info">Pág. ${autor['Página CAF']}</div>` : ''}
       </div>
       <div class="doc-item ${autor['Informativo SPPREV'] === 'Sim' ? 'doc-presente' : 'doc-ausente'}">
         <i class="fas ${autor['Informativo SPPREV'] === 'Sim' ? 'fa-check-circle' : 'fa-times-circle'}"></i>
         <span>Informativo SPPREV</span>
-        ${autor['Página SPPREV'] ? `<div class="pagina-info">Pág. ${autor['Página SPPREV']}</div>` : ''}
+        ${(autor['Informativo SPPREV'] === 'Sim' && autor['Página SPPREV'] && autor['Página SPPREV'] !== 'nan' && autor['Página SPPREV'] !== 'null' && autor['Página SPPREV'] !== '') ? 
+          `<div class="pagina-info">Pág. ${autor['Página SPPREV']}</div>` : ''}
       </div>
       <div class="doc-item ${autor['Informativo Extratão'] === 'Sim' ? 'doc-presente' : 'doc-ausente'}">
         <i class="fas ${autor['Informativo Extratão'] === 'Sim' ? 'fa-check-circle' : 'fa-times-circle'}"></i>
         <span>Informativo Extratão</span>
-        ${autor['Página Extratão'] ? `<div class="pagina-info">Pág. ${autor['Página Extratão']}</div>` : ''}
+        ${(autor['Informativo Extratão'] === 'Sim' && autor['Página Extratão'] && autor['Página Extratão'] !== 'nan' && autor['Página Extratão'] !== 'null' && autor['Página Extratão'] !== '') ? 
+          `<div class="pagina-info">Pág. ${autor['Página Extratão']}</div>` : ''}
       </div>
     </div>
   `;

@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file
 import os
+import time
 from werkzeug.utils import secure_filename
 import pdfplumber
 from pypdf import PdfReader, PdfWriter
@@ -376,7 +377,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
         return []
 
     df = pd.DataFrame(dados_inicial)
-    df.insert(0, 'ID', range(1, len(df) + 1))
+    df.insert(0, 'Id', range(1, len(df) + 1))  # Alterado para 'Id' para manter consistência com o resto do código
 
     for inf in ['Extratão', 'CAF', 'SPPREV']:
         df[f'Informativo {inf}'] = 'Não'
@@ -647,21 +648,93 @@ def upload():
 def analisar():
     tipo_acao = request.args.get('tipo_acao', '')
     data_distribuicao = request.args.get('data_distribuicao', '')
-
-    resultados = processar_arquivos(tipo_acao, data_distribuicao)
-
-    # Se não tivermos dados de autores, retornamos uma mensagem de erro
-    if not resultados or not resultados.get('autores'):
-        return render_template('erro.html', mensagem="Nenhum autor encontrado na Petição Inicial. Verifique se o documento foi carregado corretamente.")
-
-    # Salva os resultados em um arquivo Excel (apenas os dados dos autores)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome_arquivo = f"analise_processos_{timestamp}.xlsx"
-    caminho_excel = os.path.join(app.config['RESULTS_FOLDER'], nome_arquivo)
-
-    # Converte para DataFrame e salva
-    df = pd.DataFrame(resultados['autores'])
-    df.to_excel(caminho_excel, index=False)
+    
+    # Verifica se existe um arquivo Excel recente para carregar
+    pasta_resultados = app.config['RESULTS_FOLDER']
+    arquivos_excel = [f for f in os.listdir(pasta_resultados) if f.endswith('.xlsx')]
+    
+    use_previous_results = False
+    arquivo_excel_anterior = None
+    
+    if arquivos_excel:
+        # Obtém o arquivo mais recente
+        arquivo_excel_anterior = max(arquivos_excel, key=lambda f: os.path.getmtime(os.path.join(pasta_resultados, f)))
+        
+        # Verifica se o arquivo é recente (menos de 1 hora)
+        caminho_excel = os.path.join(pasta_resultados, arquivo_excel_anterior)
+        tempo_modificacao = os.path.getmtime(caminho_excel)
+        tempo_atual = time.time()
+        
+        # Se o arquivo foi modificado nos últimos 10 minutos, usa ele
+        if tempo_atual - tempo_modificacao < 600:  # 10 minutos em segundos
+            use_previous_results = True
+            print(f"Usando arquivo Excel existente: {arquivo_excel_anterior}")
+    
+    if use_previous_results and arquivo_excel_anterior:
+        # Carrega os resultados do Excel
+        try:
+            df = pd.read_excel(os.path.join(pasta_resultados, arquivo_excel_anterior))
+            
+            # Processa os informativos apenas para obter a lista completa
+            resultados_temp = processar_arquivos(tipo_acao, data_distribuicao)
+            
+            # Marca os informativos como vinculados com base nos dados do Excel
+            if 'informativos' in resultados_temp:
+                for info in resultados_temp['informativos']:
+                    info_tipo = info.get('tipo', '')
+                    
+                    if info_tipo:
+                        coluna_verificar = f'Informativo {info_tipo}'
+                        # Procura se algum autor tem esse informativo marcado como "Sim"
+                        for _, row in df.iterrows():
+                            if coluna_verificar in row and row[coluna_verificar] == 'Sim':
+                                # Se o autor tem o informativo, marca como vinculado
+                                info['encontrado_match'] = True
+                                break
+            
+            # Cria o objeto de resultados usando os dados do Excel e os informativos processados
+            resultados = {
+                'autores': df.to_dict(orient='records'),
+                'nao_classificados': resultados_temp.get('nao_classificados', []),
+                'informativos': resultados_temp.get('informativos', [])
+            }
+            
+            # Usa o mesmo arquivo Excel
+            nome_arquivo = arquivo_excel_anterior
+            
+        except Exception as e:
+            print(f"Erro ao carregar arquivo Excel existente: {e}")
+            # Se falhar, processa normalmente
+            resultados = processar_arquivos(tipo_acao, data_distribuicao)
+            
+            # Se não tivermos dados de autores, retornamos uma mensagem de erro
+            if not resultados or not resultados.get('autores'):
+                return render_template('erro.html', mensagem="Nenhum autor encontrado na Petição Inicial. Verifique se o documento foi carregado corretamente.")
+            
+            # Salva os resultados em um arquivo Excel (apenas os dados dos autores)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_arquivo = f"analise_processos_{timestamp}.xlsx"
+            caminho_excel = os.path.join(app.config['RESULTS_FOLDER'], nome_arquivo)
+            
+            # Converte para DataFrame e salva
+            df = pd.DataFrame(resultados['autores'])
+            df.to_excel(caminho_excel, index=False)
+    else:
+        # Processa os arquivos normalmente
+        resultados = processar_arquivos(tipo_acao, data_distribuicao)
+        
+        # Se não tivermos dados de autores, retornamos uma mensagem de erro
+        if not resultados or not resultados.get('autores'):
+            return render_template('erro.html', mensagem="Nenhum autor encontrado na Petição Inicial. Verifique se o documento foi carregado corretamente.")
+        
+        # Salva os resultados em um arquivo Excel (apenas os dados dos autores)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_arquivo = f"analise_processos_{timestamp}.xlsx"
+        caminho_excel = os.path.join(app.config['RESULTS_FOLDER'], nome_arquivo)
+        
+        # Converte para DataFrame e salva
+        df = pd.DataFrame(resultados['autores'])
+        df.to_excel(caminho_excel, index=False)
 
     # Passa os dados dos autores, documentos não classificados e informativos para o template
     return render_template('resultado.html',
@@ -726,12 +799,22 @@ def visualizar_pdf(filename):
 
 @app.route('/limpar_uploads', methods=['POST'])
 def limpar_uploads():
-    pasta = app.config['UPLOAD_FOLDER']
-    if os.path.exists(pasta):
-        for arquivo in os.listdir(pasta):
-            caminho = os.path.join(pasta, arquivo)
+    # Limpa a pasta de uploads
+    pasta_uploads = app.config['UPLOAD_FOLDER']
+    if os.path.exists(pasta_uploads):
+        for arquivo in os.listdir(pasta_uploads):
+            caminho = os.path.join(pasta_uploads, arquivo)
             if os.path.isfile(caminho):
                 os.remove(caminho)
+    
+    # Limpa a pasta de resultados
+    pasta_resultados = app.config['RESULTS_FOLDER']
+    if os.path.exists(pasta_resultados):
+        for arquivo in os.listdir(pasta_resultados):
+            caminho = os.path.join(pasta_resultados, arquivo)
+            if os.path.isfile(caminho):
+                os.remove(caminho)
+    
     return redirect(url_for('index'))
 
 @app.route('/classificar_documento', methods=['POST'])
@@ -783,6 +866,214 @@ def classificar_documento():
         return jsonify({'success': True})
     except Exception as e:
         print(f"Erro ao classificar documento: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/vincular_informativo', methods=['POST'])
+def vincular_informativo():
+    """
+    Vincula um informativo (CAF, SPPREV ou Extratão) a um autor específico.
+    Atualiza as colunas de status indicando que o autor possui o informativo.
+    """
+    try:
+        dados = request.json
+        arquivo = dados.get('arquivo')
+        autor_id = dados.get('autor_id')
+        tipo_informativo = dados.get('tipo_informativo')
+
+        # Validação dos dados recebidos
+        if not arquivo or not autor_id or not tipo_informativo:
+            return jsonify({
+                'success': False, 
+                'error': 'Dados incompletos. Arquivo, ID do autor e tipo do informativo são obrigatórios.'
+            })
+
+        # Verifica se o arquivo existe
+        pasta = app.config['UPLOAD_FOLDER']
+        if not os.path.exists(os.path.join(pasta, arquivo)):
+            return jsonify({'success': False, 'error': f'Arquivo não encontrado: {arquivo}'})
+
+        # Extrai informações do arquivo
+        paginas = extrair_paginas_arquivo(arquivo.split('__', 1)[1] if '__' in arquivo else arquivo)
+        
+        # Obtém o tipo do arquivo (CAF, SPPREV, Extratão)
+        tipo_arquivo = tipo_informativo
+        
+        # Tratamento para garantir consistência do nome do tipo
+        if tipo_arquivo.lower() == 'extratao' or tipo_arquivo.lower() == 'extratão':
+            tipo_arquivo = 'Extratão'
+        elif tipo_arquivo.lower() == 'caf':
+            tipo_arquivo = 'CAF'
+        elif tipo_arquivo.lower() == 'spprev':
+            tipo_arquivo = 'SPPREV'
+
+        # Obtém o caminho do arquivo temporário de resultados (usa o mais recente)
+        pasta_resultados = app.config['RESULTS_FOLDER']
+        arquivos_resultados = os.listdir(pasta_resultados)
+        
+        # Filtra apenas os arquivos Excel e ordena pelo mais recente
+        arquivos_excel = [f for f in arquivos_resultados if f.endswith('.xlsx')]
+        if not arquivos_excel:
+            return jsonify({'success': False, 'error': 'Nenhum arquivo de resultados encontrado'})
+        
+        arquivo_mais_recente = max(arquivos_excel, key=lambda f: os.path.getmtime(os.path.join(pasta_resultados, f)))
+        caminho_excel = os.path.join(pasta_resultados, arquivo_mais_recente)
+
+        # Lê o arquivo Excel
+        df = pd.read_excel(caminho_excel)
+
+        # Para debug
+        print(f"Colunas disponíveis no DataFrame: {df.columns.tolist()}")
+        
+        # Encontra o autor pelo ID
+        try:
+            id_autor = int(autor_id)
+        except ValueError:
+            # Se não for possível converter para int, usa a string original
+            id_autor = autor_id
+            print(f"Usando ID no formato string: {id_autor}")
+        
+        # Default para a coluna de ID mais comum baseado na análise
+        id_column = 'Id'  # Este é o nome real da coluna conforme verificamos
+        
+        # Verifica se existe coluna de ID no DataFrame
+        if 'Id' not in df.columns:
+            # Tenta outras variações
+            if 'ID' in df.columns:
+                id_column = 'ID'
+            else:
+                # Busca por colunas com nome que contém "id" independente da capitalização
+                id_columns = [col for col in df.columns if col.lower() == 'id']
+                if id_columns:
+                    id_column = id_columns[0]
+        
+        if not id_column:
+            # Busca por qualquer coluna que tenha 'id' no nome
+            id_columns = [col for col in df.columns if 'id' in col.lower()]
+            if id_columns:
+                id_column = id_columns[0]
+                print(f"Usando coluna alternativa com ID: {id_column}")
+            else:
+                print("Nenhuma coluna de ID encontrada")
+                return jsonify({'success': False, 'error': 'Coluna de ID não encontrada no DataFrame'})
+        
+        print(f"Usando coluna de ID: {id_column}, buscando valor: {id_autor}, tipo: {type(id_autor)}")
+        print(f"Valores na coluna {id_column}: {df[id_column].tolist()[:10]}")
+        
+        # Busca o autor pelo ID - tenta com diferentes tipos
+        autor_idx = df.index[(df[id_column] == id_autor) | 
+                             (df[id_column] == str(id_autor)) | 
+                             (df[id_column].astype(str) == str(id_autor))].tolist()
+        
+        if not autor_idx:
+            return jsonify({'success': False, 'error': f'Autor com ID {id_autor} não encontrado'})
+        
+        autor_idx = autor_idx[0]  # Pega o primeiro índice (deve ser único)
+
+        # Atualiza o status do informativo para esse autor
+        coluna_informativo = f'Informativo {tipo_arquivo}'
+        coluna_pagina = f'Página {tipo_arquivo}'
+        
+        # Garantir que as colunas existem (verificar diferentes possíveis capitalizações)
+        colunas_info = [col for col in df.columns if col.lower() == coluna_informativo.lower()]
+        colunas_pagina = [col for col in df.columns if col.lower() == coluna_pagina.lower()]
+        
+        if colunas_info:
+            coluna_informativo = colunas_info[0]  # Usa o nome exato da coluna
+            df.at[autor_idx, coluna_informativo] = 'Sim'
+            
+            if colunas_pagina and paginas:
+                coluna_pagina = colunas_pagina[0]  # Usa o nome exato da coluna
+                df.at[autor_idx, coluna_pagina] = paginas
+        else:
+            return jsonify({'success': False, 'error': f'Coluna para o tipo {tipo_arquivo} não encontrada'})
+
+        # Atualiza a coluna de análise se existir
+        if 'Análise' in df.columns or 'análise' in [col.lower() for col in df.columns]:
+            coluna_analise = 'Análise' if 'Análise' in df.columns else [col for col in df.columns if col.lower() == 'análise'][0]
+            
+            # Obtém os dados do autor
+            autor_data = df.iloc[autor_idx].to_dict()
+            
+            # Se o usuário definiu um tipo de ação e data de distribuição, passa para a análise
+            tipo_acao = autor_data.get('Tipo Acao', '')
+            data_distribuicao = autor_data.get('Data Distribuicao', '')
+            
+            # Cria um dicionário apenas com os dados necessários para a análise
+            # Encontra as colunas corretas para cada tipo de campo
+            nome_cols = [k for k in autor_data.keys() if k.lower() == 'nome']
+            cpf_cols = [k for k in autor_data.keys() if k.lower() == 'cpf']
+            rg_cols = [k for k in autor_data.keys() if k.lower() == 'rg']
+            
+            # Procura colunas de informativos com diferentes capitalizações
+            caf_cols = [k for k in autor_data.keys() if 'informativo caf' in k.lower()]
+            spprev_cols = [k for k in autor_data.keys() if 'informativo spprev' in k.lower()]
+            extratao_cols = [k for k in autor_data.keys() if 'informativo extrat' in k.lower()]
+            
+            # Monta o dicionário com os valores encontrados
+            dados_para_analise = {
+                'Nome': autor_data.get(nome_cols[0] if nome_cols else 'Nome', ''),
+                'Cpf': autor_data.get(cpf_cols[0] if cpf_cols else 'Cpf', ''),
+                'Rg': autor_data.get(rg_cols[0] if rg_cols else 'Rg', ''),
+                'caf': autor_data.get(caf_cols[0] if caf_cols else 'Informativo CAF', 'Não'),
+                'spprev': autor_data.get(spprev_cols[0] if spprev_cols else 'Informativo SPPREV', 'Não'),
+                'extratao': autor_data.get(extratao_cols[0] if extratao_cols else 'Informativo Extratão', 'Não')
+            }
+            
+            # Atualiza a análise com base nos novos dados
+            nova_analise = analisar_com_chatgpt(dados_para_analise, tipo_acao, data_distribuicao)
+            df.at[autor_idx, coluna_analise] = nova_analise
+
+        # Salva as alterações no arquivo Excel
+        df.to_excel(caminho_excel, index=False)
+
+        # Para contornar o problema de recarregar a página e perder as alterações,
+        # vamos usar uma abordagem diferente: em vez de recarregar a página,
+        # retornamos os dados atualizados para o JavaScript atualizar diretamente a UI
+        
+        # Como esta é uma chamada POST via AJAX, não podemos pegar diretamente da query string
+        # Vamos pegar os parâmetros do referer ou usar os do último processamento salvo
+        referer = request.headers.get('Referer', '')
+        
+        # O problema principal é que precisamos usar a mesma URL que o usuário estava vendo
+        # para que a página seja recarregada com os mesmos parâmetros
+        
+        # Extraímos tipo_acao e data_distribuicao da URL do referer
+        import urllib.parse
+        tipo_acao_atual = ''
+        data_distribuicao_atual = ''
+        
+        try:
+            # Parseia o referer para extrair os parâmetros
+            if 'analisar' in referer:
+                query_string = referer.split('?', 1)[1] if '?' in referer else ''
+                params = urllib.parse.parse_qs(query_string)
+                
+                tipo_acao_atual = params.get('tipo_acao', [''])[0]
+                data_distribuicao_atual = params.get('data_distribuicao', [''])[0]
+        except Exception as e:
+            print(f"Erro ao extrair parâmetros do referer: {e}")
+        
+        redirect_url = f"/analisar"
+        
+        # Somente adiciona os parâmetros se estiverem presentes
+        if tipo_acao_atual or data_distribuicao_atual:
+            redirect_params = []
+            if tipo_acao_atual:
+                redirect_params.append(f"tipo_acao={urllib.parse.quote(tipo_acao_atual)}")
+            if data_distribuicao_atual:
+                redirect_params.append(f"data_distribuicao={urllib.parse.quote(data_distribuicao_atual)}")
+            
+            if redirect_params:
+                redirect_url += "?" + "&".join(redirect_params)
+
+        return jsonify({
+            'success': True,
+            'redirect': redirect_url
+        })
+    except Exception as e:
+        print(f"Erro ao vincular informativo: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
