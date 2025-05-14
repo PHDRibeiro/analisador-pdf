@@ -217,7 +217,7 @@
           <select id="filtro-status-match" class="filter-select">
             <option value="todos">Todos os status</option>
             <option value="match">Com cruzamento</option>
-            <option value="sem-match">Sem cruzamento</option>
+            <option value="sem-match" selected>Sem cruzamento</option>
           </select>
         </div>
 
@@ -230,6 +230,7 @@
                 <th>RG</th>
                 <th>CPF</th>
                 <th>Arquivo</th>
+                <th>Visualizar</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -249,6 +250,13 @@
                   {{ info.get('arquivo', '') }}
                   {% if info.get('paginas') %}
                   <span class="pagina-ref">Pág. {{ info.get('paginas', '') }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  {% if info.get('arquivo_completo', '') %}
+                  <button class="btn-icon view-pdf" onclick="abrirPreviewPDF('{{ info.get('arquivo_completo', '') }}')">
+                    <i class="fas fa-eye"></i>
+                  </button>
                   {% endif %}
                 </td>
                 <td class="{{ 'status-sim' if info.get('encontrado_match', False) else 'status-nao' }}">
@@ -329,12 +337,10 @@ function criarModalPDF() {
 // Função para abrir o preview do PDF
 function abrirPreviewPDF(caminhoArquivo) {
   criarModalPDF();
-
-  // Extrai apenas o nome do arquivo sem o caminho completo
-  const nomeArquivo = caminhoArquivo.split('/').pop();
-
+  
   // Cria a URL correta para visualizar o PDF
-  const url = `/visualizar_pdf/${encodeURIComponent(nomeArquivo)}`;
+  const url = `/visualizar_pdf/${encodeURIComponent(caminhoArquivo)}`;
+  console.log("Abrindo PDF:", caminhoArquivo, "URL completa:", url);
   pdfFrame.src = url;
   pdfModal.style.display = 'block';
 }
@@ -576,6 +582,8 @@ function toggleInformativos() {
     icon.classList.add('open');
     setTimeout(() => {
       container.classList.add('open');
+      // Aplica o filtro de "Sem cruzamento" quando a tabela é exibida pela primeira vez
+      aplicarFiltrosInformativos();
     }, 10);
   } else {
     container.classList.remove('open');

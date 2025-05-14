@@ -817,3 +817,21 @@ form[action="/limpar_uploads"] {
   background-color: rgba(46, 204, 113, 0.1);
   color: #27ae60;
 }
+
+/* Botão de visualização na tabela de informativos */
+.view-pdf {
+  font-size: 14px;
+  background-color: rgba(0, 51, 160, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+/* Centralizar conteúdo na coluna */
+.text-center {
+  text-align: center !important;
+}

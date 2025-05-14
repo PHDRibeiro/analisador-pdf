@@ -339,6 +339,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
             extratos = parse_extratao(texto)
             for dado in extratos:
                 dado["arquivo"] = nome_original
+                dado["arquivo_completo"] = arquivo  # Nome completo com prefixo
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
                 dado["tipo"] = "Extratão"
                 dado["encontrado_match"] = False  # Será atualizado durante o cruzamento
@@ -347,6 +348,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
             registros = parse_caf(texto)
             for dado in registros:
                 dado["arquivo"] = nome_original
+                dado["arquivo_completo"] = arquivo  # Nome completo com prefixo
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
                 dado["tipo"] = "CAF"
                 dado["encontrado_match"] = False  # Será atualizado durante o cruzamento
@@ -355,6 +357,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
             registros = parse_spprev(texto)
             for dado in registros:
                 dado["arquivo"] = nome_original
+                dado["arquivo_completo"] = arquivo  # Nome completo com prefixo
                 dado["paginas"] = extrair_paginas_arquivo(nome_original)
                 dado["tipo"] = "SPPREV"
                 dado["encontrado_match"] = False  # Será atualizado durante o cruzamento
@@ -678,15 +681,48 @@ def visualizar_pdf(filename):
     """
     Endpoint para visualizar um arquivo PDF diretamente no navegador.
     """
-    # Agora recebemos o nome completo do arquivo (com o prefixo)
+    # Decodifica o nome do arquivo se necessário
+    decoded_filename = filename
+    
+    # Pasta de uploads
     pasta = app.config['UPLOAD_FOLDER']
-    caminho = os.path.join(pasta, filename)
-
-    try:
+    
+    # Lista todos os arquivos disponíveis na pasta para debug
+    arquivos_disponiveis = os.listdir(pasta)
+    print(f"Arquivos disponíveis na pasta: {arquivos_disponiveis}")
+    print(f"Buscando arquivo: {decoded_filename}")
+    
+    # 1. Tenta o caminho direto
+    caminho = os.path.join(pasta, decoded_filename)
+    if os.path.exists(caminho):
+        print(f"✅ Arquivo encontrado diretamente: {caminho}")
         return send_file(caminho, mimetype='application/pdf')
-    except FileNotFoundError:
-        # Se o arquivo não for encontrado, retorna um erro 404
-        return f"Arquivo PDF não encontrado: {filename}", 404
+    
+    # 2. Tenta verificar se é um arquivo com prefixo
+    for prefixo in ["Informativo_CAF__", "Informativo_SPPREV__", "Informativo_Extratão__", "Informativo_Extratao__"]:
+        arquivo_com_prefixo = f"{prefixo}{decoded_filename}"
+        caminho_prefixado = os.path.join(pasta, arquivo_com_prefixo)
+        if os.path.exists(caminho_prefixado):
+            print(f"✅ Arquivo encontrado com prefixo: {caminho_prefixado}")
+            return send_file(caminho_prefixado, mimetype='application/pdf')
+    
+    # 3. Tenta encontrar qualquer arquivo que contenha o nome fornecido
+    for arquivo in arquivos_disponiveis:
+        if decoded_filename in arquivo:
+            caminho_parcial = os.path.join(pasta, arquivo)
+            print(f"✅ Arquivo encontrado parcialmente: {caminho_parcial}")
+            return send_file(caminho_parcial, mimetype='application/pdf')
+    
+    # 4. Tenta versão recortada
+    recorte_nome = f"_recorte_{decoded_filename}"
+    recorte_caminho = os.path.join(pasta, recorte_nome)
+    if os.path.exists(recorte_caminho):
+        print(f"✅ Arquivo recortado encontrado: {recorte_caminho}")
+        return send_file(recorte_caminho, mimetype='application/pdf')
+    
+    # Se chegou aqui, não encontrou o arquivo
+    print(f"❌ Arquivo não encontrado: {decoded_filename}")
+    return f"Arquivo PDF não encontrado: {decoded_filename}", 404
 
 @app.route('/limpar_uploads', methods=['POST'])
 def limpar_uploads():
