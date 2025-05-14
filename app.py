@@ -391,7 +391,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                 df.at[idx, 'Informativo Extratão'] = 'Sim'
                 df.at[idx, 'Página Extratão'] = registro.get('paginas', '')
                 extratao_encontrados[i]['encontrado_match'] = True
-                break
+                # Removido o break para processar todos os informativos com o mesmo CPF
 
     # Cruzamento com CAF por RG (com tolerância) ou, em último caso, por nome
     for idx, row in df.iterrows():
@@ -413,7 +413,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                 df.at[idx, 'Página CAF'] = registro.get('paginas', '')
                 caf_encontrados[i]['encontrado_match'] = True
                 encontrou = True
-                break
+                # Removido o break para processar todos os informativos com o mesmo RG
 
         if not encontrou:
             for i, registro in enumerate(caf_encontrados):
@@ -424,7 +424,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                     df.at[idx, 'Informativo CAF'] = 'Sim'
                     df.at[idx, 'Página CAF'] = registro.get('paginas', '')
                     caf_encontrados[i]['encontrado_match'] = True
-                    break
+                    # Removido o break para processar todos os informativos com nomes correspondentes
 
     # Cruzamento com SPPREV (por CPF, RG ou nome)
     for idx, row in df.iterrows():
@@ -442,7 +442,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                 df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
                 spprev_encontrados[i]['encontrado_match'] = True
                 encontrou = True
-                break
+                # Removido o break para processar todos os informativos com o mesmo CPF
 
         # Se não encontrou por CPF, tenta por RG
         if not encontrou:
@@ -457,7 +457,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                     df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
                     spprev_encontrados[i]['encontrado_match'] = True
                     encontrou = True
-                    break
+                    # Removido o break para processar todos os informativos com o mesmo RG
 
         # Se ainda não encontrou, tenta por nome
         if not encontrou:
@@ -467,7 +467,7 @@ def processar_arquivos(tipo_acao='', data_distribuicao=''):
                     df.at[idx, 'Informativo SPPREV'] = 'Sim'
                     df.at[idx, 'Página SPPREV'] = registro.get('paginas', '')
                     spprev_encontrados[i]['encontrado_match'] = True
-                    break
+                    # Removido o break para processar todos os informativos com nomes correspondentes
 
     # Define nomes de colunas padronizados, preservando os nomes específicos para os informativos
     colunas_padronizadas = []
